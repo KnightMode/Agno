@@ -1,0 +1,63 @@
+{
+  "name": "agno",
+  "version": "0.1.0",
+  "description": "Agno — a native macOS knowledge app with terminal integration.",
+  "main": "src/main/main.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "postinstall": "bash scripts/patch-electron-name.sh",
+    "dev": "bash scripts/patch-electron-name.sh && concurrently -k \"vite\" \"wait-on tcp:5173 && electron .\"",
+    "build:icons": "bash scripts/generate-icons.sh",
+    "build:web": "vite build",
+    "build": "npm run build:web && electron-builder",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "@codemirror/lang-markdown": "^6.3.4",
+    "@uiw/react-codemirror": "^4.23.7",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.3.0",
+    "chokidar": "^4.0.3",
+    "diff": "^8.0.3",
+    "dompurify": "^3.2.6",
+    "electron-log": "^5.2.4",
+    "fuse.js": "^7.1.0",
+    "highlight.js": "^11.11.1",
+    "lucide-react": "^0.511.0",
+    "marked": "^15.0.12",
+    "marked-highlight": "^2.2.2",
+    "node-pty": "^1.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-force-graph-2d": "^1.29.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.4.1",
+    "concurrently": "^9.1.2",
+    "electron": "^35.1.5",
+    "electron-builder": "^26.0.12",
+    "vite": "^6.2.6",
+    "wait-on": "^8.0.3"
+  },
+  "build": {
+    "appId": "com.agno.desktop",
+    "productName": "Agno",
+    "asar": true,
+    "mac": {
+      "icon": "build/icon.png",
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "files": [
+      "dist/**/*",
+      "src/main/**/*",
+      "src/preload/**/*",
+      "build/icon.png",
+      "package.json"
+    ]
+  }
+}
