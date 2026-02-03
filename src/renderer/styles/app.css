@@ -55,6 +55,7 @@
 
   /* ── Sidebar ── */
   --sidebar-width: 280px;
+  --editor-font-family: -apple-system, 'SF Pro Text', BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
 }
 
 /* ── Light Theme ── */
@@ -770,7 +771,7 @@ button {
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
   overflow: hidden;
-  transition: grid-template-columns 130ms var(--ease-mac);
+  transition: none;
 }
 
 .app-shell.sidebar-hidden {
@@ -828,8 +829,8 @@ button {
     linear-gradient(180deg, rgba(0, 0, 0, 0.22), rgba(0, 0, 0, 0.14)),
     linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.004)),
     var(--bg-toolbar);
-  backdrop-filter: blur(38px) saturate(1.5) brightness(1);
-  -webkit-backdrop-filter: blur(38px) saturate(1.5) brightness(1);
+  backdrop-filter: blur(18px) saturate(1.2) brightness(1);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2) brightness(1);
   border-right: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.06) inset,
@@ -837,7 +838,7 @@ button {
   padding: 0 8px 0;
   overflow: hidden;
   opacity: 1;
-  transition: opacity 120ms var(--ease-mac);
+  transition: opacity 90ms linear;
   will-change: opacity;
 }
 
@@ -1001,6 +1002,7 @@ button {
   gap: 7px;
   height: 30px;
   padding: 0 10px;
+  margin: 1px 0;
   border-radius: var(--radius-sm);
   font-size: 13px;
   color: var(--text-secondary);
@@ -1008,9 +1010,34 @@ button {
   transition: all var(--duration-fast) var(--ease-mac);
 }
 
+.tree-row.search-result {
+  height: auto;
+  min-height: 34px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+
 .tree-label {
   flex: 1;
   min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-row.search-result .tree-label {
+  width: 100%;
+  flex: none;
+}
+
+.tree-hint {
+  width: 100%;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-tertiary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1121,7 +1148,7 @@ button {
   overflow: hidden;
   background: transparent;
   position: relative;
-  transition: grid-template-rows var(--duration-slow) var(--ease-smooth);
+  transition: none;
   isolation: isolate;
 }
 
@@ -1136,12 +1163,12 @@ button {
   align-items: center;
   padding: 0 10px 0 14px;
   height: 48px;
-  transition: padding-left 130ms var(--ease-mac);
+  transition: none;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0)),
     var(--bg-toolbar);
-  backdrop-filter: blur(48px) saturate(1.8);
-  -webkit-backdrop-filter: blur(48px) saturate(1.8);
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   -webkit-app-region: drag;
 }
@@ -1527,11 +1554,31 @@ mark.note-find-hit.active {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 280px;
-  transition: grid-template-columns 130ms var(--ease-mac);
+  transition: none;
 }
 
 .content-grid.context-hidden {
   grid-template-columns: minmax(0, 1fr) 0px;
+}
+
+.content-grid.terminal-right {
+  grid-template-columns: minmax(0, 1fr) 360px 280px;
+}
+
+.content-grid.terminal-right.context-hidden {
+  grid-template-columns: minmax(0, 1fr) 360px;
+}
+
+.editor-split {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.editor-split.split-open {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1px;
+  background: var(--separator);
 }
 
 .single-pane {
@@ -1547,6 +1594,52 @@ mark.note-find-hit.active {
   min-height: 0;
 }
 
+.split-pane .preview-pane {
+  padding: 14px 24px 20px;
+}
+
+.split-prose-wrapper {
+  max-width: 100%;
+}
+
+.split-pane-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.split-pane-title {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.split-pane-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.split-pane-btn {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.split-pane-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
 /* ── CodeMirror Overrides ── */
 
 .cm-editor,
@@ -1556,7 +1649,7 @@ mark.note-find-hit.active {
 
 .cm-editor {
   background: transparent !important;
-  font-family: 'SF Mono', SFMono-Regular, ui-monospace, Menlo, monospace;
+  font-family: var(--editor-font-family);
   font-size: 14px;
   line-height: 1.6;
 }
@@ -1606,7 +1699,7 @@ mark.note-find-hit.active {
 .preview-pane {
   height: 100%;
   overflow-y: auto;
-  padding: 36px 48px;
+  padding: 16px 48px 32px;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   contain: paint;
@@ -1619,6 +1712,7 @@ mark.note-find-hit.active {
 }
 
 .prose {
+  font-family: var(--editor-font-family);
   line-height: var(--prose-line-height, 1.7);
   color: var(--text-primary);
   font-size: var(--prose-font-size, 15px);
@@ -1659,7 +1753,7 @@ mark.note-find-hit.active {
   border: 1px solid rgba(10, 132, 255, 0.45);
   background: rgba(10, 132, 255, 0.08);
   color: var(--text-primary);
-  font-family: 'SF Mono', SFMono-Regular, ui-monospace, Menlo, monospace;
+  font-family: var(--editor-font-family);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -2203,6 +2297,22 @@ mark.note-find-hit.active {
   padding: 4px 0;
 }
 
+.terminal-side {
+  min-width: 0;
+  border-left: 1px solid var(--separator);
+  background: linear-gradient(180deg, rgba(20, 20, 20, 0.95), rgba(17, 17, 17, 0.98));
+  overflow: hidden;
+}
+
+.terminal-side .terminal-pane {
+  border-top: none;
+  height: 100%;
+}
+
+.terminal-side.hidden {
+  display: none;
+}
+
 
 /* ══════════════════════════════════════════════════════════════
    COMPOSER BAR — Status Line
@@ -2599,8 +2709,8 @@ mark.note-find-hit.active {
 }
 
 .graph-modal {
-  width: min(820px, 92vw);
-  max-height: 85vh;
+  width: min(980px, 94vw);
+  height: min(85vh, 860px);
   border-radius: 14px;
   background: var(--bg-popover);
   backdrop-filter: blur(40px) saturate(1.6);
@@ -2610,6 +2720,9 @@ mark.note-find-hit.active {
     0 40px 120px rgba(0, 0, 0, 0.45),
     0 0 0 0.5px rgba(255, 255, 255, 0.05) inset;
   padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   animation: palette-in var(--duration-normal) var(--ease-spring);
 }
 
@@ -2617,7 +2730,6 @@ mark.note-find-hit.active {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
 }
 
 .graph-header h3 {
@@ -2663,11 +2775,127 @@ mark.note-find-hit.active {
   color: var(--text-primary);
 }
 
+.graph-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.graph-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.graph-toolbar-primary {
+  flex-wrap: wrap;
+}
+
+.graph-toolbar-primary .graph-meta {
+  margin-left: auto;
+}
+
+.graph-toolbar-secondary {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto minmax(180px, 280px);
+  align-items: center;
+}
+
+.graph-btn {
+  height: 26px;
+  padding: 0 10px;
+  line-height: 24px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: all var(--duration-fast) var(--ease-mac);
+}
+
+.graph-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.graph-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.graph-btn.active {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--accent) 40%, rgba(255, 255, 255, 0.08));
+  background: color-mix(in srgb, var(--accent) 25%, rgba(255, 255, 255, 0.06));
+}
+
+.graph-select {
+  height: 26px;
+  width: 100%;
+  padding: 0 24px 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.graph-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.graph-meta {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.graph-selected {
+  text-align: right;
+  max-width: 280px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.graph-help-row {
+  margin: 0;
+}
+
+.graph-help {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
 .graph-container {
   width: 100%;
-  height: 68vh;
+  flex: 1;
+  min-height: 300px;
   border-radius: 8px;
   overflow: hidden;
+}
+
+@media (max-width: 980px) {
+  .graph-toolbar-secondary {
+    grid-template-columns: 1fr auto;
+    row-gap: 8px;
+  }
+
+  .graph-selected {
+    grid-column: 1 / -1;
+    text-align: left;
+    max-width: none;
+  }
 }
 
 
@@ -3454,7 +3682,20 @@ mark.note-find-hit.active {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .content-grid.terminal-right,
+  .content-grid.terminal-right.context-hidden {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .editor-split.split-open {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .context-pane {
+    display: none;
+  }
+
+  .terminal-side {
     display: none;
   }
 

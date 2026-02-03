@@ -30,6 +30,27 @@ const TITLE_FORMATS = [
   { value: 'date', label: 'Date (e.g. 2026-02-10)' }
 ];
 
+const TERMINAL_POSITIONS = [
+  { value: 'bottom', label: 'Bottom' },
+  { value: 'right', label: 'Right Pane' }
+];
+
+const FONT_FAMILIES = [
+  { value: 'systemSans', label: 'System Sans' },
+  { value: 'systemRounded', label: 'System Rounded' },
+  { value: 'inter', label: 'Inter' },
+  { value: 'sourceSans', label: 'Source Sans' },
+  { value: 'notoSans', label: 'Noto Sans' },
+  { value: 'georgia', label: 'Georgia' },
+  { value: 'serif', label: 'Serif' },
+  { value: 'charter', label: 'Charter' },
+  { value: 'sourceSerif', label: 'Source Serif' },
+  { value: 'atkinson', label: 'Atkinson Hyperlegible' },
+  { value: 'humanist', label: 'Humanist Sans' },
+  { value: 'jetbrainsMono', label: 'JetBrains Mono' },
+  { value: 'mono', label: 'Monospace' }
+];
+
 function Toggle({ checked, onChange }) {
   return (
     <button
@@ -134,6 +155,17 @@ export default function SettingsPanel({ settings, onSettingsChange, onClose }) {
                     <span className="range-value">{settings.editorLineHeight.toFixed(1)}</span>
                   </div>
                 </SettingRow>
+                <SettingRow label="Font Family" description="Type face used for notes while editing and reading">
+                  <select
+                    className="setting-select"
+                    value={settings.editorFontFamily}
+                    onChange={(e) => onSettingsChange('editorFontFamily', e.target.value)}
+                  >
+                    {FONT_FAMILIES.map((font) => (
+                      <option key={font.value} value={font.value}>{font.label}</option>
+                    ))}
+                  </select>
+                </SettingRow>
                 <SettingRow label="Spellcheck" description="Check spelling while editing">
                   <Toggle
                     checked={settings.editorSpellcheck}
@@ -178,17 +210,30 @@ export default function SettingsPanel({ settings, onSettingsChange, onClose }) {
               </>
             )}
             {category === 'general' && (
-              <SettingRow label="New Note Title" description="Default naming for new notes">
-                <select
-                  className="setting-select"
-                  value={settings.newNoteTitleFormat}
-                  onChange={(e) => onSettingsChange('newNoteTitleFormat', e.target.value)}
-                >
-                  {TITLE_FORMATS.map((fmt) => (
-                    <option key={fmt.value} value={fmt.value}>{fmt.label}</option>
-                  ))}
-                </select>
-              </SettingRow>
+              <>
+                <SettingRow label="New Note Title" description="Default naming for new notes">
+                  <select
+                    className="setting-select"
+                    value={settings.newNoteTitleFormat}
+                    onChange={(e) => onSettingsChange('newNoteTitleFormat', e.target.value)}
+                  >
+                    {TITLE_FORMATS.map((fmt) => (
+                      <option key={fmt.value} value={fmt.value}>{fmt.label}</option>
+                    ))}
+                  </select>
+                </SettingRow>
+                <SettingRow label="Terminal Position" description="Choose where the terminal pane opens">
+                  <select
+                    className="setting-select"
+                    value={settings.terminalPosition}
+                    onChange={(e) => onSettingsChange('terminalPosition', e.target.value)}
+                  >
+                    {TERMINAL_POSITIONS.map((position) => (
+                      <option key={position.value} value={position.value}>{position.label}</option>
+                    ))}
+                  </select>
+                </SettingRow>
+              </>
             )}
             {category === 'about' && (
               <div className="settings-about">

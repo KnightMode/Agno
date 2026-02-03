@@ -1,4 +1,4 @@
-import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { marked } from 'marked';
 import hljs from 'highlight.js/lib/core';
 import javascript from 'highlight.js/lib/languages/javascript';
@@ -176,10 +176,12 @@ const CONTENT_WIDTH_KEY = 'ngobs.contentWidth';
 const SETTINGS_DEFAULTS = {
   editorFontSize: 15,
   editorLineHeight: 1.7,
+  editorFontFamily: 'systemSans',
   editorSpellcheck: false,
   accentColor: '#0a84ff',
   contentWidth: CONTENT_WIDTH_DEFAULT,
   newNoteTitleFormat: 'timestamp',
+  terminalPosition: 'bottom',
   theme: 'dark'
 };
 
@@ -272,20 +274,53 @@ function collectBacklinks(docs, currentPath) {
     .map((doc) => doc.path);
 }
 
-function filterTreeByPaths(nodes, allowedPaths) {
-  const filtered = [];
-  for (const node of nodes) {
-    if (node.type === 'file') {
-      if (allowedPaths.has(node.path)) filtered.push(node);
-      continue;
-    }
+function fileTitleFromPath(filePath) {
+  return filePath.replace(/\.md$/, '').split('/').pop() || filePath;
+}
 
-    const children = filterTreeByPaths(node.children || [], allowedPaths);
-    if (children.length > 0) {
-      filtered.push({ ...node, children });
-    }
-  }
-  return filtered;
+function rankDocsForShortQuery(docs, rawQuery) {
+  const query = rawQuery.trim().toLowerCase();
+  if (!query) return [];
+
+  const tokens = query.split(/\s+/).filter(Boolean);
+  return docs
+    .map((doc) => {
+      const title = fileTitleFromPath(doc.path).toLowerCase();
+      const pathText = doc.path.toLowerCase();
+      const content = (doc.content || '').toLowerCase();
+      let score = 1000;
+
+      if (title === query) score -= 900;
+      else if (title.startsWith(query)) score -= 700;
+      else if (title.includes(query)) score -= 500;
+
+      if (pathText.startsWith(query)) score -= 320;
+      else if (pathText.includes(query)) score -= 220;
+
+      if (content.includes(query)) score -= 120;
+
+      tokens.forEach((token) => {
+        if (!token) return;
+        if (title.includes(token)) score -= 70;
+        if (pathText.includes(token)) score -= 35;
+        if (content.includes(token)) score -= 12;
+      });
+
+      const titleIdx = title.indexOf(query);
+      if (titleIdx >= 0) score += titleIdx;
+      const pathIdx = pathText.indexOf(query);
+      if (pathIdx >= 0) score += pathIdx * 0.3;
+
+      return { doc, score };
+    })
+    .filter((entry) => {
+      const lower = rawQuery.toLowerCase();
+      const pathHit = entry.doc.path.toLowerCase().includes(lower);
+      const contentHit = entry.doc.content.toLowerCase().includes(lower);
+      return pathHit || contentHit;
+    })
+    .sort((a, b) => a.score - b.score)
+    .map((entry) => entry.doc);
 }
 
 function splitBodyIntoBlocks(body) {
@@ -638,6 +673,8 @@ export default function App() {
   const [renameTargetPath, setRenameTargetPath] = useState('');
   const [pinnedTabs, setPinnedTabs] = useState(new Set());
   const [tabMenu, setTabMenu] = useState(null);
+  const [splitView, setSplitView] = useState(null);
+  const [splitContent, setSplitContent] = useState('');
 
   const contentWidth = settings.contentWidth;
 
@@ -650,6 +687,7 @@ export default function App() {
   const tabMenuRef = useRef(null);
   const tabbarRef = useRef(null);
   const tabCacheRef = useRef({});
+  const splitLoadRef = useRef(0);
   const [tabOverflow, setTabOverflow] = useState({ left: false, right: false });
   const [contentWidthCeiling, setContentWidthCeiling] = useState(CONTENT_WIDTH_MAX);
 
@@ -842,12 +880,28 @@ export default function App() {
     }
   }, [settings.theme]);
 
-  // Apply prose font size and line height
+  // Apply prose typography
   useEffect(() => {
     const root = document.documentElement;
+    const fontFamilies = {
+      systemSans: '-apple-system, "SF Pro Text", BlinkMacSystemFont, "Helvetica Neue", sans-serif',
+      systemRounded: '"SF Pro Rounded", "Arial Rounded MT Bold", "Hiragino Sans", "Segoe UI", sans-serif',
+      inter: '"Inter", "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif',
+      sourceSans: '"Source Sans 3", "Source Sans Pro", "Segoe UI", "Helvetica Neue", sans-serif',
+      notoSans: '"Noto Sans", "Segoe UI", "Helvetica Neue", sans-serif',
+      georgia: 'Georgia, "Times New Roman", Times, serif',
+      serif: '"Iowan Old Style", "Palatino Linotype", Palatino, "Times New Roman", serif',
+      charter: '"Charter", "Bitstream Charter", "Cambria", "Times New Roman", serif',
+      sourceSerif: '"Source Serif 4", "Source Serif Pro", "Times New Roman", serif',
+      atkinson: '"Atkinson Hyperlegible", "Verdana", "Segoe UI", sans-serif',
+      humanist: '"Avenir Next", "Segoe UI", "Trebuchet MS", sans-serif',
+      jetbrainsMono: '"JetBrains Mono", "SF Mono", SFMono-Regular, ui-monospace, Menlo, monospace',
+      mono: '"SF Mono", SFMono-Regular, ui-monospace, Menlo, monospace'
+    };
+    root.style.setProperty('--editor-font-family', fontFamilies[settings.editorFontFamily] || fontFamilies.systemSans);
     root.style.setProperty('--prose-font-size', `${settings.editorFontSize}px`);
     root.style.setProperty('--prose-line-height', String(settings.editorLineHeight));
-  }, [settings.editorFontSize, settings.editorLineHeight]);
+  }, [settings.editorFontSize, settings.editorLineHeight, settings.editorFontFamily]);
 
   useEffect(() => {
     if (!showPalette) return undefined;
@@ -997,37 +1051,52 @@ export default function App() {
 
   const resolveWikiPath = (wikiName) => allDocs.find((doc) => doc.path.endsWith(`${wikiName}.md`))?.path;
 
-  const fuse = useMemo(
+  const docsForSearch = useMemo(
     () =>
-      new Fuse(allDocs, {
-        keys: ['path', 'content'],
-        threshold: 0.3,
-        ignoreLocation: true,
-        minMatchCharLength: 2
-      }),
+      allDocs.map((doc) => ({
+        ...doc,
+        title: fileTitleFromPath(doc.path)
+      })),
     [allDocs]
   );
 
-  const filteredTree = useMemo(() => {
-    if (!query.trim()) return tree;
+  const fuse = useMemo(
+    () =>
+      new Fuse(docsForSearch, {
+        keys: [
+          { name: 'title', weight: 0.6 },
+          { name: 'path', weight: 0.3 },
+          { name: 'content', weight: 0.1 }
+        ],
+        includeScore: true,
+        threshold: 0.35,
+        ignoreLocation: true,
+        minMatchCharLength: 2
+      }),
+    [docsForSearch]
+  );
+
+  const rankedSearchDocs = useMemo(() => {
     const searchTerm = query.trim();
-    const lower = searchTerm.toLowerCase();
-    const matchedPaths = new Set();
+    if (!searchTerm) return [];
 
     if (searchTerm.length < 2) {
-      allDocs.forEach((doc) => {
-        if (doc.path.toLowerCase().includes(lower) || doc.content.toLowerCase().includes(lower)) {
-          matchedPaths.add(doc.path);
-        }
-      });
-    } else {
-      fuse.search(searchTerm).forEach((result) => {
-        matchedPaths.add(result.item.path);
-      });
+      return rankDocsForShortQuery(allDocs, searchTerm);
     }
 
-    return filterTreeByPaths(tree, matchedPaths);
-  }, [tree, allDocs, query, fuse]);
+    return fuse.search(searchTerm).map((result) => result.item);
+  }, [allDocs, query, fuse]);
+
+  const filteredTree = useMemo(() => {
+    if (!query.trim()) return tree;
+
+    return rankedSearchDocs.map((doc) => ({
+      type: 'file',
+      name: fileTitleFromPath(doc.path),
+      path: doc.path,
+      searchHint: doc.path
+    }));
+  }, [tree, query, rankedSearchDocs]);
 
   const createNote = async () => {
     let baseName;
@@ -1292,6 +1361,68 @@ export default function App() {
     await window.ngobs.file.reveal(path);
   };
 
+  const openSplitFromTab = useCallback((path, side) => {
+    if (!path) return;
+    setSplitView({ path, side: side === 'left' ? 'left' : 'right' });
+  }, []);
+
+  const closeSplitView = useCallback(() => {
+    setSplitView(null);
+    setSplitContent('');
+  }, []);
+
+  useEffect(() => {
+    if (!splitView?.path) return;
+    if (!allDocs.some((doc) => doc.path === splitView.path)) {
+      closeSplitView();
+    }
+  }, [allDocs, splitView, closeSplitView]);
+
+  useEffect(() => {
+    if (!splitView?.path) return;
+    if (splitView.path === currentPath) {
+      setSplitContent(pendingInlineContent);
+      return;
+    }
+
+    const reqId = splitLoadRef.current + 1;
+    splitLoadRef.current = reqId;
+
+    const cached = tabCacheRef.current[splitView.path];
+    if (cached?.content != null) {
+      setSplitContent(cached.content);
+    }
+
+    window.ngobs.file.read(splitView.path).then((text) => {
+      if (splitLoadRef.current !== reqId) return;
+      setSplitContent(text);
+      tabCacheRef.current[splitView.path] = {
+        content: text,
+        loadedContent: text
+      };
+    }).catch(() => {
+      if (splitLoadRef.current !== reqId) return;
+      setSplitContent('# Unable to load split note');
+    });
+  }, [splitView, currentPath, pendingInlineContent]);
+
+  const splitMetaAndBody = useMemo(() => parseFrontmatter(splitContent || ''), [splitContent]);
+  const splitRenderedHtml = useMemo(() => {
+    const body = splitMetaAndBody.body || '';
+    if (!body.trim()) return '';
+    return DOMPurify.sanitize(marked.parse(wikify(body)), { ADD_ATTR: ['data-wiki'] });
+  }, [splitMetaAndBody.body]);
+
+  const handleSplitPreviewClick = useCallback((event) => {
+    const target = event.target.closest('a[data-wiki]');
+    if (!target) return;
+    event.preventDefault();
+    const wikiName = target.getAttribute('data-wiki');
+    const match = allDocs.find((doc) => doc.path.endsWith(`${wikiName}.md`));
+    if (match) loadPath(match.path);
+    else setStatus(`Note not found: ${wikiName}`);
+  }, [allDocs, loadPath]);
+
   const paletteResults = useMemo(() => {
     if (!showPalette) return [];
     const q = deferredPaletteQuery.trim().toLowerCase();
@@ -1507,6 +1638,45 @@ export default function App() {
     );
   }
 
+  const terminalOnRight = settings.terminalPosition === 'right';
+  const terminalOnBottom = settings.terminalPosition !== 'right';
+  const splitPaneNode = splitView ? (
+    <section className="single-pane split-pane">
+      <article className="preview-pane split-preview-pane" onClick={handleSplitPreviewClick}>
+        <div className="prose-wrapper split-prose-wrapper">
+          <div className="split-pane-head">
+            <span className="split-pane-title">{splitView.path.split('/').pop().replace(/\.md$/, '')}</span>
+            <div className="split-pane-actions">
+              <button
+                className="split-pane-btn"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  loadPath(splitView.path);
+                }}
+              >
+                Open
+              </button>
+              <button
+                className="split-pane-btn"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  closeSplitView();
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+          <FrontmatterPanel meta={splitMetaAndBody.meta} />
+          <div
+            className="prose"
+            dangerouslySetInnerHTML={{ __html: splitRenderedHtml || '<p></p>' }}
+          />
+        </div>
+      </article>
+    </section>
+  ) : null;
+
   return (
     <div className={`app-shell ${showSidebar ? '' : 'sidebar-hidden'}`}>
       <aside className="left-panel">
@@ -1574,7 +1744,7 @@ export default function App() {
         </div>
       </aside>
 
-      <main className={`workspace ${showTerminal ? 'terminal-open' : 'terminal-closed'}`}>
+      <main className={`workspace ${(showTerminal && terminalOnBottom) ? 'terminal-open' : 'terminal-closed'}`}>
         <div className="topbar">
           {!showSidebar && (
             <button className="sidebar-restore-btn" onClick={() => setShowSidebar(true)} title="Show sidebar (⌘\\)">
@@ -1682,8 +1852,11 @@ export default function App() {
           </div>
         </div>
 
-        <div className={`content-grid ${showContext ? '' : 'context-hidden'}`}>
-          <section className="single-pane">
+        <div className={`content-grid ${showContext ? '' : 'context-hidden'} ${(terminalOnRight && showTerminal) ? 'terminal-right' : ''}`}>
+          <div className={`editor-split ${splitView ? `split-open split-${splitView.side}` : ''}`}>
+            {splitView?.side === 'left' && splitPaneNode}
+
+            <section className="single-pane main-pane">
             {currentPath ? (
               <article className="preview-pane" ref={previewRef}>
                 <div className="prose-wrapper" style={{ maxWidth: `${effectiveContentWidth}px` }}>
@@ -1772,7 +1945,10 @@ export default function App() {
                 </div>
               </div>
             )}
-          </section>
+            </section>
+
+            {splitView?.side !== 'left' && splitPaneNode}
+          </div>
 
           {showContext && (
             <aside className="context-pane">
@@ -1817,9 +1993,15 @@ export default function App() {
               </section>
             </aside>
           )}
+
+          {terminalOnRight && (
+            <aside className={`terminal-side ${showTerminal ? '' : 'hidden'}`}>
+              <TerminalPane visible={showTerminal} />
+            </aside>
+          )}
         </div>
 
-        <TerminalPane visible={showTerminal} />
+        {terminalOnBottom && <TerminalPane visible={showTerminal} />}
 
         <div className="composer-bar">
           <div className="composer-left composer-metrics">
@@ -1979,6 +2161,32 @@ export default function App() {
             }}
           >
             Close Tab
+          </button>
+          <div className="menu-separator" />
+          <button
+            onClick={() => {
+              openSplitFromTab(tabMenu.path, 'right');
+              setTabMenu(null);
+            }}
+          >
+            Split Right
+          </button>
+          <button
+            onClick={() => {
+              openSplitFromTab(tabMenu.path, 'left');
+              setTabMenu(null);
+            }}
+          >
+            Split Left
+          </button>
+          <button
+            disabled={!splitView}
+            onClick={() => {
+              closeSplitView();
+              setTabMenu(null);
+            }}
+          >
+            Close Split
           </button>
           <div className="menu-separator" />
           <button
