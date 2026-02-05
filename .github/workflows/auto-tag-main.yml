@@ -1,0 +1,63 @@
+name: Auto Tag on Main
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  tag-main:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create and push tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          VERSION=$(node -p "require('./package.json').version")
+          BASE_TAG="v${VERSION}"
+          TAG="$BASE_TAG"
+
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            TAG="${BASE_TAG}-build.${GITHUB_RUN_NUMBER}"
+          fi
+
+          echo "Using tag: $TAG"
+
+          # Skip if this commit already has a v* tag.
+          if git tag --points-at HEAD | grep -E '^v' >/dev/null 2>&1; then
+            echo "Commit already tagged. Skipping."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: Trigger release workflow
+        if: env.TAG != ''
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          curl -sS -X POST \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/workflows/release.yml/dispatches" \
+            -d "{\"ref\":\"main\",\"inputs\":{\"tag\":\"${TAG}\"}}"
