@@ -1,6 +1,7 @@
-const { app, BrowserWindow, dialog, ipcMain, Menu, shell, nativeImage } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, Menu, shell, nativeImage, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
+const { execFile } = require('child_process');
 const chokidar = require('chokidar');
 const log = require('electron-log');
 const pty = require('node-pty');
@@ -14,6 +15,7 @@ let mainWindow;
 let watcher;
 const terminals = new Map();
 let activeVault = null;
+let lastSyncTimestamp = null;
 const MAX_RECENT_VAULTS = 8;
 
 const isDev = !app.isPackaged;
@@ -111,6 +113,125 @@ function normalizePath(vaultPath, targetPath) {
     throw new Error('Path escapes vault root.');
   }
   return resolved;
+}
+
+function runGit(args, cwd) {
+  return new Promise((resolve, reject) => {
+    execFile('git', args, { cwd, timeout: 60000, maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        const details = (stderr || stdout || error.message || 'git command failed').trim();
+        reject(new Error(details));
+        return;
+      }
+      resolve((stdout || '').trim());
+    });
+  });
+}
+
+function syncSecretsPath() {
+  return path.join(app.getPath('userData'), 'sync-secrets.json');
+}
+
+function encryptSecret(plainText) {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('Secure storage is unavailable on this system.');
+  }
+  return safeStorage.encryptString(plainText).toString('base64');
+}
+
+function decryptSecret(cipherText) {
+  if (!cipherText) return '';
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error('Secure storage is unavailable on this system.');
+  }
+  return safeStorage.decryptString(Buffer.from(cipherText, 'base64'));
+}
+
+async function readSyncSecrets() {
+  try {
+    const raw = await fs.readFile(syncSecretsPath(), 'utf8');
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeSyncSecrets(secrets) {
+  await fs.mkdir(app.getPath('userData'), { recursive: true });
+  await fs.writeFile(syncSecretsPath(), JSON.stringify(secrets, null, 2), 'utf8');
+}
+
+function parseGitHubRemote(remoteUrl) {
+  const normalized = (remoteUrl || '').trim();
+  if (!normalized) return null;
+
+  const httpsMatch = normalized.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/i);
+  if (httpsMatch) {
+    return {
+      host: 'github.com',
+      owner: httpsMatch[1],
+      repo: httpsMatch[2],
+      slug: `${httpsMatch[1]}/${httpsMatch[2]}`,
+      remoteUrl: normalized
+    };
+  }
+
+  const sshMatch = normalized.match(/^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/i);
+  if (sshMatch) {
+    return {
+      host: 'github.com',
+      owner: sshMatch[1],
+      repo: sshMatch[2],
+      slug: `${sshMatch[1]}/${sshMatch[2]}`,
+      remoteUrl: normalized
+    };
+  }
+
+  return null;
+}
+
+function repoSecretKey(repoInfo) {
+  return `${repoInfo.host}/${repoInfo.owner}/${repoInfo.repo}`.toLowerCase();
+}
+
+function makeAuthRemoteUrl(repoInfo, token) {
+  return `https://x-access-token:${encodeURIComponent(token)}@github.com/${repoInfo.owner}/${repoInfo.repo}.git`;
+}
+
+function redactTokenInText(value) {
+  return String(value || '').replace(/x-access-token:[^@]+@/gi, 'x-access-token:***@');
+}
+
+async function getVaultGitInfo(vaultPath) {
+  try {
+    const insideRepo = await runGit(['rev-parse', '--is-inside-work-tree'], vaultPath);
+    if (insideRepo !== 'true') return { isRepo: false };
+  } catch {
+    return { isRepo: false };
+  }
+
+  let remoteUrl = '';
+  try {
+    remoteUrl = await runGit(['remote', 'get-url', 'origin'], vaultPath);
+  } catch {
+    // No remote configured yet
+  }
+
+  let branch = '';
+  try {
+    branch = await runGit(['rev-parse', '--abbrev-ref', 'HEAD'], vaultPath);
+  } catch {
+    branch = 'main';
+  }
+
+  const repoInfo = parseGitHubRemote(remoteUrl);
+  return {
+    isRepo: true,
+    remoteUrl,
+    branch,
+    repoInfo
+  };
 }
 
 async function getTree(dir, root) {
@@ -360,6 +481,245 @@ ipcMain.handle('graph:data', async () => {
   }
 
   return { nodes, links };
+});
+
+ipcMain.handle('sync:config', async () => {
+  if (!activeVault) throw new Error('No active vault');
+  const gitInfo = await getVaultGitInfo(activeVault);
+  if (!gitInfo.isRepo) {
+    return { enabled: false, isRepo: false, hasToken: false };
+  }
+
+  if (!gitInfo.repoInfo) {
+    return {
+      enabled: false,
+      isRepo: true,
+      hasToken: false,
+      remoteUrl: gitInfo.remoteUrl,
+      branch: gitInfo.branch,
+      reason: 'Only GitHub remotes are currently supported.'
+    };
+  }
+
+  const secrets = await readSyncSecrets();
+  const key = repoSecretKey(gitInfo.repoInfo);
+  const hasToken = Boolean(secrets[key]);
+  return {
+    enabled: true,
+    isRepo: true,
+    hasToken,
+    remoteUrl: gitInfo.remoteUrl,
+    repoSlug: gitInfo.repoInfo.slug,
+    branch: gitInfo.branch
+  };
+});
+
+ipcMain.handle('sync:init', async () => {
+  if (!activeVault) throw new Error('No active vault');
+  const gitInfo = await getVaultGitInfo(activeVault);
+  if (gitInfo.isRepo) return { ok: true, alreadyInit: true };
+
+  await runGit(['init'], activeVault);
+  // Create .gitignore for vault metadata
+  const gitignorePath = path.join(activeVault, '.gitignore');
+  try { await fs.access(gitignorePath); } catch {
+    await fs.writeFile(gitignorePath, '.agno/\n.DS_Store\n', 'utf8');
+  }
+  await runGit(['add', '-A'], activeVault);
+  await runGit(['commit', '-m', 'Initial commit'], activeVault);
+  return { ok: true };
+});
+
+ipcMain.handle('sync:set-remote', async (_event, remoteUrl) => {
+  if (!activeVault) throw new Error('No active vault');
+  const trimmed = String(remoteUrl || '').trim();
+  if (!trimmed) throw new Error('Remote URL is required.');
+
+  const repoInfo = parseGitHubRemote(trimmed);
+  if (!repoInfo) throw new Error('Only GitHub repository URLs are supported.');
+
+  const gitInfo = await getVaultGitInfo(activeVault);
+  if (!gitInfo.isRepo) throw new Error('Vault is not a git repository. Initialize it first.');
+
+  try {
+    await runGit(['remote', 'get-url', 'origin'], activeVault);
+    // Remote already exists, update it
+    await runGit(['remote', 'set-url', 'origin', trimmed], activeVault);
+  } catch {
+    // No remote yet, add it
+    await runGit(['remote', 'add', 'origin', trimmed], activeVault);
+  }
+
+  return { ok: true, repoSlug: repoInfo.slug };
+});
+
+ipcMain.handle('sync:create-repo', async (_event, token, repoName, isPrivate) => {
+  if (!activeVault) throw new Error('No active vault');
+  const trimmedToken = String(token || '').trim();
+  if (!trimmedToken) throw new Error('GitHub token is required to create a repository.');
+
+  const gitInfo = await getVaultGitInfo(activeVault);
+  if (!gitInfo.isRepo) throw new Error('Vault is not a git repository. Initialize it first.');
+
+  const name = String(repoName || '').trim() || path.basename(activeVault);
+
+  // Create repo via GitHub API
+  const { net } = require('electron');
+  const body = JSON.stringify({ name, private: isPrivate !== false, auto_init: false });
+
+  const repoData = await new Promise((resolve, reject) => {
+    const request = net.request({
+      method: 'POST',
+      url: 'https://api.github.com/user/repos'
+    });
+    request.setHeader('Authorization', `Bearer ${trimmedToken}`);
+    request.setHeader('Accept', 'application/vnd.github+json');
+    request.setHeader('Content-Type', 'application/json');
+    request.setHeader('User-Agent', 'Agno-App');
+
+    let responseBody = '';
+    request.on('response', (response) => {
+      response.on('data', (chunk) => { responseBody += chunk.toString(); });
+      response.on('end', () => {
+        try {
+          const parsed = JSON.parse(responseBody);
+          if (response.statusCode >= 400) {
+            reject(new Error(parsed.message || `GitHub API error (${response.statusCode})`));
+          } else {
+            resolve(parsed);
+          }
+        } catch {
+          reject(new Error(`Invalid response from GitHub (${response.statusCode})`));
+        }
+      });
+    });
+    request.on('error', (err) => reject(new Error(err.message || 'Network request failed')));
+    request.write(body);
+    request.end();
+  });
+
+  const cloneUrl = repoData.clone_url || `https://github.com/${repoData.full_name}.git`;
+  const repoInfo = parseGitHubRemote(cloneUrl);
+
+  // Set remote
+  try {
+    await runGit(['remote', 'get-url', 'origin'], activeVault);
+    await runGit(['remote', 'set-url', 'origin', cloneUrl], activeVault);
+  } catch {
+    await runGit(['remote', 'add', 'origin', cloneUrl], activeVault);
+  }
+
+  // Save token
+  if (repoInfo) {
+    const secrets = await readSyncSecrets();
+    secrets[repoSecretKey(repoInfo)] = encryptSecret(trimmedToken);
+    await writeSyncSecrets(secrets);
+  }
+
+  return { ok: true, repoSlug: repoData.full_name, cloneUrl };
+});
+
+ipcMain.handle('sync:set-token', async (_event, token) => {
+  if (!activeVault) throw new Error('No active vault');
+  const trimmed = String(token || '').trim();
+  if (!trimmed) throw new Error('Token is required.');
+
+  const gitInfo = await getVaultGitInfo(activeVault);
+  if (!gitInfo.isRepo || !gitInfo.repoInfo) {
+    throw new Error('This vault is not connected to a supported GitHub remote.');
+  }
+
+  const secrets = await readSyncSecrets();
+  secrets[repoSecretKey(gitInfo.repoInfo)] = encryptSecret(trimmed);
+  await writeSyncSecrets(secrets);
+  return { ok: true };
+});
+
+ipcMain.handle('sync:clear-token', async () => {
+  if (!activeVault) throw new Error('No active vault');
+  const gitInfo = await getVaultGitInfo(activeVault);
+  if (!gitInfo.isRepo || !gitInfo.repoInfo) return { ok: true };
+
+  const secrets = await readSyncSecrets();
+  delete secrets[repoSecretKey(gitInfo.repoInfo)];
+  await writeSyncSecrets(secrets);
+  return { ok: true };
+});
+
+ipcMain.handle('sync:status', async () => {
+  if (!activeVault) return { dirty: false, lastSync: null };
+  try {
+    const status = await runGit(['status', '--porcelain'], activeVault);
+    const dirty = Boolean(status);
+    const changedCount = dirty ? status.split('\n').filter(Boolean).length : 0;
+    return { dirty, changedCount, lastSync: lastSyncTimestamp };
+  } catch {
+    return { dirty: false, changedCount: 0, lastSync: lastSyncTimestamp };
+  }
+});
+
+ipcMain.handle('sync:run', async () => {
+  if (!activeVault) throw new Error('No active vault');
+  const gitInfo = await getVaultGitInfo(activeVault);
+  if (!gitInfo.isRepo || !gitInfo.repoInfo) {
+    throw new Error('This vault is not connected to a supported GitHub remote.');
+  }
+
+  const secrets = await readSyncSecrets();
+  const encryptedToken = secrets[repoSecretKey(gitInfo.repoInfo)];
+  if (!encryptedToken) {
+    throw new Error('No GitHub token configured for this vault.');
+  }
+  const token = decryptSecret(encryptedToken);
+  const authRemote = makeAuthRemoteUrl(gitInfo.repoInfo, token);
+
+  try {
+    const summary = [];
+
+    // Auto-commit local changes before syncing
+    const status = await runGit(['status', '--porcelain'], activeVault);
+    if (status) {
+      await runGit(['add', '-A'], activeVault);
+      const now = new Date();
+      const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+      await runGit(['commit', '-m', `vault sync ${timestamp}`], activeVault);
+      summary.push('Committed local changes');
+    }
+
+    // Try to fetch — will fail if remote branch doesn't exist yet (empty repo)
+    let remoteHasBranch = true;
+    try {
+      await runGit(['fetch', authRemote, gitInfo.branch], activeVault);
+      summary.push('Fetched remote updates');
+    } catch {
+      remoteHasBranch = false;
+    }
+
+    if (remoteHasBranch) {
+      // Check if there are remote changes to pull
+      const behind = await runGit(['rev-list', '--count', `HEAD..FETCH_HEAD`], activeVault);
+      if (parseInt(behind, 10) > 0) {
+        await runGit(['rebase', 'FETCH_HEAD'], activeVault);
+        summary.push('Rebased on remote changes');
+      }
+    }
+
+    await runGit(['push', authRemote, `HEAD:${gitInfo.branch}`], activeVault);
+    summary.push(remoteHasBranch ? 'Pushed to remote' : 'Pushed initial commit');
+
+    lastSyncTimestamp = Date.now();
+
+    return {
+      ok: true,
+      repoSlug: gitInfo.repoInfo.slug,
+      branch: gitInfo.branch,
+      summary
+    };
+  } catch (error) {
+    // Abort any in-progress rebase so the repo is not left in a broken state
+    try { await runGit(['rebase', '--abort'], activeVault); } catch { /* no rebase in progress */ }
+    throw new Error(redactTokenInText(error?.message || 'Sync failed.'));
+  }
 });
 
 // ── Version History ──
