@@ -1,4 +1,4 @@
-name: Auto Tag on Main
+name: Auto Tag and Release on Main
 
 on:
   push:
@@ -11,6 +11,9 @@ permissions:
 jobs:
   tag-main:
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+      skip: ${{ steps.version.outputs.skip }}
 
     steps:
       - name: Checkout
@@ -65,3 +68,44 @@ jobs:
 
           git tag -a "$TAG" -m "Release $TAG"
           git push origin "$TAG"
+
+  release-macos:
+    needs: tag-main
+    if: needs.tag-main.outputs.skip != 'true'
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build app
+        run: npm run build:web && npx electron-builder --publish never
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-build
+          path: |
+            dist/*.dmg
+            dist/*-mac.zip
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.tag-main.outputs.tag }}
+          files: |
+            dist/*.dmg
+            dist/*-mac.zip
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
