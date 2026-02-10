@@ -1205,6 +1205,22 @@ button {
   color: var(--text-secondary);
 }
 
+.sidebar-footer-btn.sync-done {
+  color: #34d399;
+}
+
+.sidebar-footer-btn.sync-done svg {
+  opacity: 1;
+}
+
+.sidebar-footer-btn.sync-pending {
+  color: #fbbf24;
+}
+
+.sidebar-footer-btn.sync-pending svg {
+  opacity: 1;
+}
+
 .sidebar-footer-hint {
   font-size: 10px;
   color: var(--text-tertiary);

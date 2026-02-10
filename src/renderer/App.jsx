@@ -1827,7 +1827,7 @@ export default function App() {
 
         <div className="sidebar-footer">
           <button
-            className="sidebar-footer-btn"
+            className={`sidebar-footer-btn ${syncConfig.enabled && syncConfig.hasToken && !syncBusy ? (syncInfo.dirty ? 'sync-pending' : syncInfo.lastSync ? 'sync-done' : '') : ''}`}
             onClick={() => runVaultSync()}
             disabled={syncBusy || !syncConfig.enabled || !syncConfig.hasToken}
             title={
