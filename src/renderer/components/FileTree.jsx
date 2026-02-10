@@ -50,7 +50,7 @@ function Node({ node, activePath, onOpen, onContextMenu, collapseSignal = 0, for
 
   return (
     <button
-      className={`tree-row ${activePath === node.path ? 'active' : ''}`}
+      className={`tree-row ${activePath === node.path ? 'active' : ''} ${node.searchHint ? 'search-result' : ''}`}
       onClick={() => onOpen(node.path)}
       onContextMenu={(e) => {
         e.preventDefault();
@@ -59,6 +59,7 @@ function Node({ node, activePath, onOpen, onContextMenu, collapseSignal = 0, for
       style={{ paddingLeft: `${8 + depth * 12}px` }}
     >
       <span className="tree-label">{node.name.replace(/\.md$/, '')}</span>
+      {node.searchHint ? <span className="tree-hint">{node.searchHint}</span> : null}
     </button>
   );
 }
