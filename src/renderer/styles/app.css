@@ -353,6 +353,48 @@
   border-bottom-color: rgba(0, 0, 0, 0.05);
 }
 
+[data-theme="light"] .setting-input {
+  border-color: rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.03);
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .setting-input:hover {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="light"] .setting-action-btn {
+  border-color: rgba(0, 0, 0, 0.1);
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .setting-action-btn:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"] .setting-action-btn.secondary {
+  border-color: rgba(0, 0, 0, 0.06);
+  color: var(--text-secondary);
+}
+
+[data-theme="light"] .setting-tab-row {
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .setting-tab:not(:last-child) {
+  border-right-color: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"] .setting-tab:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+[data-theme="light"] .setting-tab.active {
+  background: rgba(0, 0, 0, 0.06);
+}
+
 [data-theme="light"] ::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.12);
 }
@@ -555,6 +597,40 @@
 
 [data-theme="warm"] .setting-row {
   border-bottom-color: rgba(235, 225, 210, 0.04);
+}
+
+[data-theme="warm"] .setting-input {
+  border-color: rgba(235, 225, 210, 0.08);
+  background: rgba(235, 225, 210, 0.04);
+}
+
+[data-theme="warm"] .setting-input:hover {
+  background: rgba(235, 225, 210, 0.07);
+}
+
+[data-theme="warm"] .setting-action-btn {
+  border-color: rgba(235, 225, 210, 0.1);
+  background: rgba(235, 225, 210, 0.05);
+}
+
+[data-theme="warm"] .setting-action-btn:hover:not(:disabled) {
+  background: rgba(235, 225, 210, 0.09);
+}
+
+[data-theme="warm"] .setting-tab-row {
+  border-color: rgba(235, 225, 210, 0.1);
+}
+
+[data-theme="warm"] .setting-tab:not(:last-child) {
+  border-right-color: rgba(235, 225, 210, 0.1);
+}
+
+[data-theme="warm"] .setting-tab:hover {
+  background: rgba(235, 225, 210, 0.04);
+}
+
+[data-theme="warm"] .setting-tab.active {
+  background: rgba(235, 225, 210, 0.07);
 }
 
 [data-theme="warm"] ::-webkit-scrollbar-thumb {
@@ -1117,6 +1193,23 @@ button {
 
 .sidebar-footer-btn:hover svg {
   opacity: 0.85;
+}
+
+.sidebar-footer-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.sidebar-footer-btn:disabled:hover {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.sidebar-footer-hint {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  font-weight: 400;
+  margin-left: 2px;
 }
 
 .upgrade-btn {
@@ -3047,6 +3140,16 @@ mark.note-find-hit.active {
   flex-shrink: 0;
 }
 
+.setting-control:has(.setting-stacked) {
+  flex-shrink: 1;
+  flex-grow: 1;
+  min-width: 0;
+}
+
+.setting-row:has(.setting-stacked) {
+  flex-wrap: wrap;
+}
+
 /* ── Toggle Switch ── */
 
 .setting-toggle {
@@ -3208,6 +3311,141 @@ mark.note-find-hit.active {
 .setting-select option {
   background: #2a2a2a;
   color: var(--text-primary);
+}
+
+/* ── Sync Settings ── */
+
+.setting-stacked {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.setting-input {
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: all var(--duration-fast) var(--ease-mac);
+}
+
+.setting-input:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.setting-input:focus {
+  border-color: rgba(10, 132, 255, 0.4);
+  box-shadow: 0 0 0 2px rgba(10, 132, 255, 0.15);
+}
+
+.setting-input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.setting-inline-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.setting-action-btn {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-mac);
+}
+
+.setting-action-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.setting-action-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.setting-action-btn.secondary {
+  border-color: rgba(255, 255, 255, 0.06);
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.setting-action-btn.secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.setting-status-text {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  line-height: 1.4;
+  padding: 2px 0;
+}
+
+.setting-error-text {
+  color: #ff453a;
+}
+
+.setting-tab-row {
+  display: flex;
+  gap: 0;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.setting-tab {
+  flex: 1;
+  height: 30px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-mac);
+}
+
+.setting-tab:not(:last-child) {
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.setting-tab:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+}
+
+.setting-tab.active {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.setting-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.setting-checkbox input[type="checkbox"] {
+  accent-color: var(--accent);
 }
 
 /* ── About Section ── */

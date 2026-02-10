@@ -501,6 +501,15 @@ function wikify(markdownText) {
   });
 }
 
+function formatSyncTime(ts) {
+  if (!ts) return '';
+  const diff = Date.now() - ts;
+  if (diff < 60000) return 'just now';
+  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
+  return new Date(ts).toLocaleDateString();
+}
+
 function createPaletteActions() {
   return [
     { id: 'action:new', label: 'New Note', hint: 'Create a new note' },
@@ -675,6 +684,10 @@ export default function App() {
   const [tabMenu, setTabMenu] = useState(null);
   const [splitView, setSplitView] = useState(null);
   const [splitContent, setSplitContent] = useState('');
+  const [syncConfig, setSyncConfig] = useState({ enabled: false, isRepo: false, hasToken: false });
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncStatus, setSyncStatus] = useState('');
+  const [syncInfo, setSyncInfo] = useState({ dirty: false, changedCount: 0, lastSync: null });
 
   const contentWidth = settings.contentWidth;
 
@@ -713,6 +726,24 @@ export default function App() {
     setRecentVaults(recents || []);
   };
 
+  const refreshSyncConfig = useCallback(async () => {
+    try {
+      const config = await window.ngobs.sync.config();
+      setSyncConfig(config || { enabled: false, isRepo: false, hasToken: false });
+    } catch {
+      setSyncConfig({ enabled: false, isRepo: false, hasToken: false });
+    }
+  }, []);
+
+  const refreshSyncStatus = useCallback(async () => {
+    try {
+      const info = await window.ngobs.sync.status();
+      setSyncInfo(info || { dirty: false, changedCount: 0, lastSync: null });
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const activatePath = async (path) => {
     if (!path) return;
 
@@ -749,6 +780,8 @@ export default function App() {
     setVault(next.rootPath);
     setTree(next.tree);
     await refreshRecentVaults();
+    await refreshSyncConfig();
+    await refreshSyncStatus();
     const docs = await refreshDocs();
     const first = docs[0]?.path;
     if (first) loadPath(first);
@@ -762,6 +795,8 @@ export default function App() {
       setVault(next.rootPath);
       setTree(next.tree);
       await refreshRecentVaults();
+      await refreshSyncConfig();
+      await refreshSyncStatus();
       const docs = await refreshDocs();
       const first = docs[0]?.path;
       if (first) loadPath(first);
@@ -777,6 +812,8 @@ export default function App() {
       if (!existing) return;
       setVault(existing.rootPath);
       setTree(existing.tree);
+      await refreshSyncConfig();
+      await refreshSyncStatus();
       const docs = await refreshDocs();
       const first = docs[0]?.path;
       if (first) loadPath(first);
@@ -785,12 +822,64 @@ export default function App() {
     unsubRef.current = window.ngobs.vault.onChanged(async () => {
       await refreshTree();
       await refreshDocs();
+      await refreshSyncConfig();
+      await refreshSyncStatus();
     });
 
     return () => {
       if (unsubRef.current) unsubRef.current();
     };
-  }, []);
+  }, [refreshSyncConfig, refreshSyncStatus]);
+
+  const runVaultSync = useCallback(async () => {
+    setSyncBusy(true);
+    try {
+      const result = await window.ngobs.sync.run();
+      const detail = result?.summary?.join(' · ') || 'Sync completed';
+      setSyncStatus(detail);
+      setStatus(`Sync complete: ${detail}`);
+      await refreshTree();
+      await refreshDocs();
+    } catch (error) {
+      const message = error?.message || 'Sync failed.';
+      setSyncStatus(message);
+      setStatus(`Sync failed: ${message}`);
+    } finally {
+      setSyncBusy(false);
+      await refreshSyncConfig();
+      await refreshSyncStatus();
+    }
+  }, [refreshSyncConfig, refreshSyncStatus]);
+
+  const saveSyncToken = useCallback(async (token) => {
+    try {
+      await window.ngobs.sync.setToken(token);
+      setSyncStatus('GitHub token saved securely.');
+      await refreshSyncConfig();
+      setStatus('GitHub token saved.');
+      return true;
+    } catch (error) {
+      const message = error?.message || 'Unable to save token.';
+      setSyncStatus(message);
+      setStatus(`Sync setup failed: ${message}`);
+      return false;
+    }
+  }, [refreshSyncConfig]);
+
+  const clearSyncToken = useCallback(async () => {
+    try {
+      await window.ngobs.sync.clearToken();
+      setSyncStatus('GitHub token removed.');
+      await refreshSyncConfig();
+      setStatus('GitHub token removed.');
+      return true;
+    } catch (error) {
+      const message = error?.message || 'Unable to clear token.';
+      setSyncStatus(message);
+      setStatus(`Sync setup failed: ${message}`);
+      return false;
+    }
+  }, [refreshSyncConfig]);
 
   useEffect(() => {
     const unsubs = [
@@ -1737,6 +1826,32 @@ export default function App() {
         </div>
 
         <div className="sidebar-footer">
+          <button
+            className="sidebar-footer-btn"
+            onClick={() => runVaultSync()}
+            disabled={syncBusy || !syncConfig.enabled || !syncConfig.hasToken}
+            title={
+              !syncConfig.enabled
+                ? 'Current vault is not a GitHub repository'
+                : !syncConfig.hasToken
+                  ? 'Configure a GitHub token in Settings'
+                  : syncBusy
+                    ? 'Syncing with GitHub…'
+                    : `Sync vault with GitHub${syncInfo.dirty ? ` (${syncInfo.changedCount} changed)` : ''}`
+            }
+          >
+            <CheckCircle2 size={14} />
+            <span>
+              {syncBusy
+                ? 'Syncing…'
+                : syncInfo.dirty
+                  ? `Sync (${syncInfo.changedCount})`
+                  : 'Sync'}
+            </span>
+            {syncInfo.lastSync && !syncBusy && (
+              <span className="sidebar-footer-hint">{formatSyncTime(syncInfo.lastSync)}</span>
+            )}
+          </button>
           <button className="sidebar-footer-btn" onClick={() => setShowSettings(true)} title="Settings">
             <Settings size={14} />
             <span>Settings</span>
@@ -2107,6 +2222,27 @@ export default function App() {
         <SettingsPanel
           settings={settings}
           onSettingsChange={handleSettingsChange}
+          syncConfig={syncConfig}
+          syncBusy={syncBusy}
+          syncStatus={syncStatus}
+          onSyncNow={runVaultSync}
+          onSyncTokenSave={saveSyncToken}
+          onSyncTokenClear={clearSyncToken}
+          onSyncInit={async () => {
+            await window.ngobs.sync.init();
+            await refreshSyncConfig();
+            await refreshSyncStatus();
+          }}
+          onSyncSetRemote={async (url) => {
+            await window.ngobs.sync.setRemote(url);
+            await refreshSyncConfig();
+            await refreshSyncStatus();
+          }}
+          onSyncCreateRepo={async (token, name, isPrivate) => {
+            await window.ngobs.sync.createRepo(token, name, isPrivate);
+            await refreshSyncConfig();
+            await refreshSyncStatus();
+          }}
           onClose={() => setShowSettings(false)}
         />
       )}

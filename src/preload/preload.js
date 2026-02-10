@@ -73,5 +73,15 @@ contextBridge.exposeInMainWorld('ngobs', {
       ipcRenderer.on('terminal:error', listener);
       return () => ipcRenderer.removeListener('terminal:error', listener);
     }
+  },
+  sync: {
+    config: () => ipcRenderer.invoke('sync:config'),
+    status: () => ipcRenderer.invoke('sync:status'),
+    init: () => ipcRenderer.invoke('sync:init'),
+    setRemote: (url) => ipcRenderer.invoke('sync:set-remote', url),
+    createRepo: (token, name, isPrivate) => ipcRenderer.invoke('sync:create-repo', token, name, isPrivate),
+    setToken: (token) => ipcRenderer.invoke('sync:set-token', token),
+    clearToken: () => ipcRenderer.invoke('sync:clear-token'),
+    run: () => ipcRenderer.invoke('sync:run')
   }
 });

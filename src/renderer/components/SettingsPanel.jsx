@@ -92,8 +92,29 @@ function SettingRow({ label, description, children }) {
   );
 }
 
-export default function SettingsPanel({ settings, onSettingsChange, onClose }) {
+export default function SettingsPanel({
+  settings,
+  onSettingsChange,
+  syncConfig,
+  syncBusy,
+  syncStatus,
+  onSyncNow,
+  onSyncTokenSave,
+  onSyncTokenClear,
+  onSyncInit,
+  onSyncSetRemote,
+  onSyncCreateRepo,
+  onClose
+}) {
   const [category, setCategory] = useState('editor');
+  const [tokenDraft, setTokenDraft] = useState('');
+  const [remoteDraft, setRemoteDraft] = useState('');
+  const [repoNameDraft, setRepoNameDraft] = useState('');
+  const [repoPrivate, setRepoPrivate] = useState(true);
+  const [tokenBusy, setTokenBusy] = useState(false);
+  const [setupBusy, setSetupBusy] = useState(false);
+  const [setupError, setSetupError] = useState('');
+  const [remoteMode, setRemoteMode] = useState('create');
   const modalRef = useRef(null);
 
   useEffect(() => {
@@ -232,6 +253,207 @@ export default function SettingsPanel({ settings, onSettingsChange, onClose }) {
                       <option key={position.value} value={position.value}>{position.label}</option>
                     ))}
                   </select>
+                </SettingRow>
+                <SettingRow
+                  label="Vault GitHub Sync"
+                  description={
+                    syncConfig?.enabled
+                      ? `Repo: ${syncConfig.repoSlug || 'origin'} (${syncConfig.branch || 'unknown branch'})`
+                      : !syncConfig?.isRepo
+                        ? 'Initialize a git repository to enable sync.'
+                        : (syncConfig?.reason || 'Add a GitHub remote to enable sync.')
+                  }
+                >
+                  <div className="setting-stacked">
+                    {/* Step 1: Init git repo if needed */}
+                    {!syncConfig?.isRepo && (
+                      <>
+                        <button
+                          className="setting-action-btn"
+                          disabled={setupBusy}
+                          onClick={async () => {
+                            try {
+                              setSetupBusy(true);
+                              setSetupError('');
+                              await onSyncInit();
+                            } catch (e) {
+                              setSetupError(e?.message || 'Failed to initialize repository.');
+                            } finally {
+                              setSetupBusy(false);
+                            }
+                          }}
+                        >
+                          {setupBusy ? 'Initializing…' : 'Initialize Git Repository'}
+                        </button>
+                        {setupError ? <div className="setting-status-text setting-error-text">{setupError}</div> : null}
+                      </>
+                    )}
+
+                    {/* Step 2: Connect to GitHub if repo exists but no remote */}
+                    {syncConfig?.isRepo && !syncConfig?.enabled && (
+                      <>
+                        <input
+                          className="setting-input"
+                          type="password"
+                          autoComplete="off"
+                          placeholder="GitHub personal access token"
+                          value={tokenDraft}
+                          onChange={(e) => setTokenDraft(e.target.value)}
+                          disabled={setupBusy}
+                        />
+
+                        <div className="setting-tab-row">
+                          <button
+                            className={`setting-tab ${remoteMode === 'create' ? 'active' : ''}`}
+                            onClick={() => { setRemoteMode('create'); setSetupError(''); }}
+                          >
+                            Create New
+                          </button>
+                          <button
+                            className={`setting-tab ${remoteMode === 'link' ? 'active' : ''}`}
+                            onClick={() => { setRemoteMode('link'); setSetupError(''); }}
+                          >
+                            Link Existing
+                          </button>
+                        </div>
+
+                        {remoteMode === 'create' && (
+                          <>
+                            <input
+                              className="setting-input"
+                              type="text"
+                              autoComplete="off"
+                              placeholder="Repository name (optional, defaults to vault name)"
+                              value={repoNameDraft}
+                              onChange={(e) => setRepoNameDraft(e.target.value)}
+                              disabled={setupBusy}
+                            />
+                            <div className="setting-inline-actions">
+                              <label className="setting-checkbox">
+                                <input
+                                  type="checkbox"
+                                  checked={repoPrivate}
+                                  onChange={(e) => setRepoPrivate(e.target.checked)}
+                                  disabled={setupBusy}
+                                />
+                                <span>Private repository</span>
+                              </label>
+                            </div>
+                            <button
+                              className="setting-action-btn"
+                              disabled={setupBusy || !tokenDraft.trim()}
+                              onClick={async () => {
+                                try {
+                                  setSetupBusy(true);
+                                  setSetupError('');
+                                  await onSyncCreateRepo(tokenDraft.trim(), repoNameDraft.trim(), repoPrivate);
+                                  setTokenDraft('');
+                                  setRepoNameDraft('');
+                                } catch (e) {
+                                  setSetupError(e?.message || 'Failed to create repository.');
+                                } finally {
+                                  setSetupBusy(false);
+                                }
+                              }}
+                            >
+                              {setupBusy ? 'Creating…' : 'Create Repository on GitHub'}
+                            </button>
+                          </>
+                        )}
+
+                        {remoteMode === 'link' && (
+                          <>
+                            <input
+                              className="setting-input"
+                              type="text"
+                              autoComplete="off"
+                              placeholder="https://github.com/user/repo.git"
+                              value={remoteDraft}
+                              onChange={(e) => setRemoteDraft(e.target.value)}
+                              disabled={setupBusy}
+                            />
+                            <button
+                              className="setting-action-btn"
+                              disabled={setupBusy || !tokenDraft.trim() || !remoteDraft.trim()}
+                              onClick={async () => {
+                                try {
+                                  setSetupBusy(true);
+                                  setSetupError('');
+                                  await onSyncSetRemote(remoteDraft.trim());
+                                  await onSyncTokenSave(tokenDraft.trim());
+                                  setRemoteDraft('');
+                                  setTokenDraft('');
+                                } catch (e) {
+                                  setSetupError(e?.message || 'Failed to link repository.');
+                                } finally {
+                                  setSetupBusy(false);
+                                }
+                              }}
+                            >
+                              {setupBusy ? 'Linking…' : 'Link Repository'}
+                            </button>
+                          </>
+                        )}
+
+                        {setupError ? <div className="setting-status-text setting-error-text">{setupError}</div> : null}
+                      </>
+                    )}
+
+                    {/* Step 3: Token + sync when fully configured */}
+                    {syncConfig?.enabled && (
+                      <>
+                        <input
+                          className="setting-input"
+                          type="password"
+                          autoComplete="off"
+                          placeholder={syncConfig?.hasToken ? 'Token saved. Enter new token to rotate.' : 'GitHub personal access token'}
+                          value={tokenDraft}
+                          onChange={(e) => setTokenDraft(e.target.value)}
+                          disabled={tokenBusy}
+                        />
+                        <div className="setting-inline-actions">
+                          <button
+                            className="setting-action-btn"
+                            disabled={tokenBusy || !tokenDraft.trim()}
+                            onClick={async () => {
+                              try {
+                                setTokenBusy(true);
+                                await onSyncTokenSave(tokenDraft.trim());
+                                setTokenDraft('');
+                              } finally {
+                                setTokenBusy(false);
+                              }
+                            }}
+                          >
+                            Save Token
+                          </button>
+                          <button
+                            className="setting-action-btn secondary"
+                            disabled={tokenBusy || !syncConfig?.hasToken}
+                            onClick={async () => {
+                              try {
+                                setTokenBusy(true);
+                                await onSyncTokenClear();
+                                setTokenDraft('');
+                              } finally {
+                                setTokenBusy(false);
+                              }
+                            }}
+                          >
+                            Clear Token
+                          </button>
+                          <button
+                            className="setting-action-btn"
+                            disabled={syncBusy || !syncConfig?.hasToken}
+                            onClick={() => onSyncNow()}
+                          >
+                            {syncBusy ? 'Syncing…' : 'Sync Now'}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                    {(syncStatus || setupError) ? <div className="setting-status-text">{setupError || syncStatus}</div> : null}
+                  </div>
                 </SettingRow>
               </>
             )}
