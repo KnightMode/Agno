@@ -192,11 +192,11 @@ export default function HistoryPanel({ currentPath, content, isDirty, onRestore,
               )}
             </div>
             <div className="history-actions">
-              <button className="setting-action-btn" onClick={handleRestore} disabled={selected === 'current' || selected === null}>
+              <button className="history-restore-btn" onClick={handleRestore} disabled={selected === 'current' || selected === null}>
                 <RotateCcw size={13} />
                 Restore
               </button>
-              <button className="setting-action-btn" onClick={handleCopy}>
+              <button className="history-copy-btn" onClick={handleCopy}>
                 <Copy size={13} />
                 Copy
               </button>

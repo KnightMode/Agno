@@ -6,7 +6,7 @@
 :root {
   /* ── macOS Dark Palette (Stocks-inspired) ── */
   --bg-base: rgba(8, 8, 10, 0.88);
-  --bg-content: rgba(10, 10, 13, 0.82);
+  --bg-content: rgba(28, 28, 32, 0.88);
   --bg-elevated: #1c1c1e;
   --bg-secondary: #2c2c2e;
   --bg-tertiary: #38383a;
@@ -868,7 +868,7 @@ button {
 }
 
 .app-shell.sidebar-hidden .topbar {
-  padding-left: 78px;
+  padding-left: 80px;
 }
 
 .sidebar-restore-btn {
@@ -880,8 +880,6 @@ button {
   color: var(--text-tertiary);
   flex-shrink: 0;
   margin-right: 6px;
-  position: relative;
-  top: 1px;
   -webkit-app-region: no-drag;
   transition: all var(--duration-fast) var(--ease-mac);
 }
@@ -928,7 +926,7 @@ button {
   display: flex;
   gap: 10px;
   align-items: center;
-  height: 46px;
+  height: 48px;
   padding-left: 72px;
   -webkit-app-region: drag;
 }
@@ -1294,7 +1292,7 @@ button {
   display: grid;
   grid-template-rows: 48px minmax(0, 1fr) 200px;
   overflow: hidden;
-  background: #0e0e10;
+  background: #131315;
   position: relative;
   transition: none;
   isolation: isolate;
@@ -1309,7 +1307,7 @@ button {
 .topbar {
   display: flex;
   align-items: center;
-  padding: 0 10px 0 14px;
+  padding: 0 10px 0 10px;
   height: 48px;
   transition: none;
   background: var(--bg-toolbar);
@@ -1326,10 +1324,9 @@ button {
 }
 
 .tabbar-shell {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 1fr) 20px;
+  display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
 }
 
@@ -1337,6 +1334,7 @@ button {
   display: flex;
   align-items: center;
   gap: 2px;
+  flex: 1;
   min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
@@ -1368,15 +1366,17 @@ button {
 .tab-scroll-btn.hidden {
   opacity: 0;
   pointer-events: none;
+  width: 0;
+  overflow: hidden;
 }
 
 .top-tab {
-  height: 28px;
+  height: 30px;
   max-width: 180px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 0 10px;
+  padding: 0 14px;
   border-radius: 8px;
   border: 1px solid transparent;
   color: var(--text-tertiary);
@@ -1462,7 +1462,7 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  width: 100%;
+  flex: 1;
   min-width: 0;
   -webkit-app-region: no-drag;
 }
@@ -2515,7 +2515,7 @@ mark.note-find-hit.active {
 .composer-stat-label {
   text-transform: uppercase;
   font-size: 9.5px;
-  color: var(--text-quaternary);
+  color: var(--text-tertiary);
   letter-spacing: 0.04em;
   margin-right: 2px;
 }
@@ -4507,6 +4507,8 @@ mark.note-find-hit.active {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .history-preview-toggle {
@@ -4539,6 +4541,7 @@ mark.note-find-hit.active {
 .history-preview {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 8px 20px 16px;
   min-height: 280px;
 }

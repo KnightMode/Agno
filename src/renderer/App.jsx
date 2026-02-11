@@ -1033,16 +1033,17 @@ export default function App() {
       }
       if (event.key === 'Enter') {
         event.preventDefault();
+        const count = noteFindMatchesRef.current.length;
         if (event.shiftKey) {
-          setNoteFindIndex((idx) => (noteFindCount ? (idx - 1 + noteFindCount) % noteFindCount : 0));
+          setNoteFindIndex((idx) => (count ? (idx - 1 + count) % count : 0));
         } else {
-          setNoteFindIndex((idx) => (noteFindCount ? (idx + 1) % noteFindCount : 0));
+          setNoteFindIndex((idx) => (count ? (idx + 1) % count : 0));
         }
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [showNoteFind, noteFindCount]);
+  }, [showNoteFind]);
 
   useEffect(() => {
     const container = previewRef.current?.querySelector('.prose-wrapper');
@@ -1060,26 +1061,22 @@ export default function App() {
     const matches = highlightNoteFindMatches(container, noteFindQuery.trim());
     noteFindMatchesRef.current = matches;
     setNoteFindCount(matches.length);
-    setNoteFindIndex((idx) => (matches.length ? Math.min(idx, matches.length - 1) : 0));
-  }, [showNoteFind, noteFindQuery, content, editingBlock]);
 
-  useEffect(() => {
-    const matches = noteFindMatchesRef.current;
-    matches.forEach((el) => el.classList.remove('active'));
-    if (!showNoteFind || !matches.length) return;
-    const active = matches[noteFindIndex] || matches[0];
-    if (!active) return;
-    active.classList.add('active');
-    const container = previewRef.current;
-    if (container && active) {
-      const rect = active.getBoundingClientRect();
-      const containerRect = container.getBoundingClientRect();
-      container.scrollTo({
-        top: container.scrollTop + rect.top - containerRect.top - containerRect.height / 2,
-        behavior: 'smooth'
-      });
+    // Clamp index if matches changed
+    const clampedIndex = matches.length ? Math.min(noteFindIndex, matches.length - 1) : 0;
+    if (clampedIndex !== noteFindIndex) {
+      setNoteFindIndex(clampedIndex);
     }
-  }, [showNoteFind, noteFindIndex, noteFindCount]);
+
+    // Apply active highlight
+    if (matches.length) {
+      const active = matches[clampedIndex];
+      if (active) {
+        active.classList.add('active');
+        active.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [showNoteFind, noteFindQuery, content, editingBlock, noteFindIndex]);
 
   const { meta: frontmatter, body: markdownBody } = useMemo(() => {
     return parseFrontmatter(content || '');
@@ -1910,14 +1907,20 @@ export default function App() {
                 <button
                   className="note-find-nav"
                   title="Previous match (Shift+Enter)"
-                  onClick={() => setNoteFindIndex((idx) => (noteFindCount ? (idx - 1 + noteFindCount) % noteFindCount : 0))}
+                  onClick={() => {
+                    const count = noteFindMatchesRef.current.length;
+                    setNoteFindIndex((idx) => (count ? (idx - 1 + count) % count : 0));
+                  }}
                 >
                   Prev
                 </button>
                 <button
                   className="note-find-nav"
                   title="Next match (Enter)"
-                  onClick={() => setNoteFindIndex((idx) => (noteFindCount ? (idx + 1) % noteFindCount : 0))}
+                  onClick={() => {
+                    const count = noteFindMatchesRef.current.length;
+                    setNoteFindIndex((idx) => (count ? (idx + 1) % count : 0));
+                  }}
                 >
                   Next
                 </button>
