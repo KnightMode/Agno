@@ -43,6 +43,12 @@ export default function GraphView({ onClose, onOpen }) {
   const fgRef = useRef(null);
 
   useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  useEffect(() => {
     window.ngobs.graph.data().then((graph) => {
       const initialNodes = graph.nodes.map((node) => {
         const saved = layout.positions[node.id];
@@ -442,14 +448,6 @@ export default function GraphView({ onClose, onOpen }) {
     if (fgRef.current) fgRef.current.d3ReheatSimulation();
   }, []);
 
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
   const hiddenCount = hiddenNodeIds.size;
   const activeNodeId = selectedNodeId || hoverNode?.id;
   const activeIsPinned = Boolean(activeNodeId && layout.positions[activeNodeId]?.pinned);
@@ -464,18 +462,16 @@ export default function GraphView({ onClose, onOpen }) {
   }, [visibleData.nodes]);
 
   return (
-    <div className="graph-overlay" onClick={onClose}>
-      <div className="graph-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="graph-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="graph-modal">
         <div className="graph-header">
           <h3>Graph</h3>
-          <button className="graph-close" onClick={onClose}>
-            <X size={14} />
-          </button>
+          <button className="graph-close" onClick={onClose}><X size={14} /></button>
         </div>
 
         <div className="graph-controls">
           <div className="graph-toolbar graph-toolbar-primary">
-            <button className={layout.staticMode ? 'graph-btn active' : 'graph-btn'} onClick={toggleStaticMode}>
+            <button className={`graph-btn ${layout.staticMode ? 'active' : ''}`} onClick={toggleStaticMode}>
               {layout.staticMode ? 'Static' : 'Dynamic'}
             </button>
             <button className="graph-btn" onClick={() => freezeCurrentLayout(layout.staticMode)}>

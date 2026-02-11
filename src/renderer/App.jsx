@@ -44,6 +44,10 @@ import GraphView from './components/GraphView';
 import SettingsPanel from './components/SettingsPanel';
 import HistoryPanel from './components/HistoryPanel';
 import AgnoLogo from './components/AgnoLogo';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './components/ui/dialog';
+import { CommandDialog, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem, CommandSeparator } from './components/ui/command';
+import { Button } from './components/ui/button';
+import { Input } from './components/ui/input';
 
 hljs.registerLanguage('javascript', javascript);
 hljs.registerLanguage('typescript', typescript);
@@ -526,26 +530,18 @@ function createPaletteActions() {
   ];
 }
 
-function DiffModal({ oldText, newText, fileName, onRevert, onClose }) {
+function DiffModal({ open, oldText, newText, fileName, onRevert, onClose }) {
   const changes = useMemo(() => diffLines(oldText || '', newText || ''), [oldText, newText]);
-
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
 
   let lineNum = 0;
   return (
-    <div className="diff-overlay" onClick={onClose}>
-      <div className="diff-modal" onClick={(e) => e.stopPropagation()}>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="diff-modal" showClose={false}>
         <div className="diff-header">
           <span className="diff-filename">{fileName}</span>
           <div className="diff-header-actions">
-            <button className="diff-revert-btn" onClick={onRevert}>Revert</button>
-            <button className="diff-close-btn" onClick={onClose}><X size={14} /></button>
+            <Button variant="destructive" size="sm" onClick={onRevert}>Revert</Button>
+            <Button variant="ghost" size="icon" onClick={onClose}><X size={14} /></Button>
           </div>
         </div>
         <div className="diff-content">
@@ -563,84 +559,70 @@ function DiffModal({ oldText, newText, fileName, onRevert, onClose }) {
             });
           })}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-function FolderPromptModal({ value, onChange, onSubmit, onClose }) {
-  useEffect(() => {
-    const onKey = (event) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
+function FolderPromptModal({ open, value, onChange, onSubmit, onClose }) {
   return (
-    <div className="folder-prompt-overlay" onClick={onClose}>
-      <div className="folder-prompt-modal" onClick={(event) => event.stopPropagation()}>
-        <h3>Create Folder</h3>
-        <p>Enter a folder path relative to the vault.</p>
-        <input
-          autoFocus
-          value={value}
-          placeholder="New Folder"
-          onChange={(event) => onChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              onSubmit();
-            }
-          }}
-        />
-        <div className="folder-prompt-actions">
-          <button className="secondary" onClick={onClose}>Cancel</button>
-          <button className="primary" onClick={onSubmit}>Create</button>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="prompt-modal">
+        <DialogHeader>
+          <DialogTitle>Create Folder</DialogTitle>
+          <DialogDescription>Enter a folder path relative to the vault.</DialogDescription>
+        </DialogHeader>
+        <div className="dialog-body-pad">
+          <Input
+            autoFocus
+            value={value}
+            placeholder="New Folder"
+            onChange={(event) => onChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                onSubmit();
+              }
+            }}
+          />
         </div>
-      </div>
-    </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={onSubmit}>Create</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-function RenamePromptModal({ value, onChange, onSubmit, onClose }) {
-  useEffect(() => {
-    const onKey = (event) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
+function RenamePromptModal({ open, value, onChange, onSubmit, onClose }) {
   return (
-    <div className="folder-prompt-overlay" onClick={onClose}>
-      <div className="folder-prompt-modal" onClick={(event) => event.stopPropagation()}>
-        <h3>Rename Note</h3>
-        <p>Enter a new name for this note.</p>
-        <input
-          autoFocus
-          value={value}
-          placeholder="Untitled"
-          onChange={(event) => onChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault();
-              onSubmit();
-            }
-          }}
-        />
-        <div className="folder-prompt-actions">
-          <button className="secondary" onClick={onClose}>Cancel</button>
-          <button className="primary" onClick={onSubmit}>Rename</button>
+    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="prompt-modal">
+        <DialogHeader>
+          <DialogTitle>Rename Note</DialogTitle>
+          <DialogDescription>Enter a new name for this note.</DialogDescription>
+        </DialogHeader>
+        <div className="dialog-body-pad">
+          <Input
+            autoFocus
+            value={value}
+            placeholder="Untitled"
+            onChange={(event) => onChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                onSubmit();
+              }
+            }}
+          />
         </div>
-      </div>
-    </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={onSubmit}>Rename</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -993,18 +975,6 @@ export default function App() {
   }, [settings.editorFontSize, settings.editorLineHeight, settings.editorFontFamily]);
 
   useEffect(() => {
-    if (!showPalette) return undefined;
-    const onKey = (event) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        setShowPalette(false);
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [showPalette]);
-
-  useEffect(() => {
     setPaletteIndex(0);
   }, [deferredPaletteQuery, showPalette]);
 
@@ -1100,7 +1070,15 @@ export default function App() {
     const active = matches[noteFindIndex] || matches[0];
     if (!active) return;
     active.classList.add('active');
-    active.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    const container = previewRef.current;
+    if (container && active) {
+      const rect = active.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      container.scrollTo({
+        top: container.scrollTop + rect.top - containerRect.top - containerRect.height / 2,
+        behavior: 'smooth'
+      });
+    }
   }, [showNoteFind, noteFindIndex, noteFindCount]);
 
   const { meta: frontmatter, body: markdownBody } = useMemo(() => {
@@ -1771,21 +1749,21 @@ export default function App() {
       <aside className="left-panel">
         <div className="window-chrome">
           <div className="window-shortcuts">
-            <button className="quick-icon-btn" onClick={createNote} title="New note">
+            <Button variant="ghost" size="icon" className="quick-icon-btn" onClick={createNote} title="New note">
               <Plus size={14} />
-            </button>
-            <button className="quick-icon-btn" onClick={() => setShowTerminal((v) => !v)} title="Terminal">
+            </Button>
+            <Button variant="ghost" size="icon" className="quick-icon-btn" onClick={() => setShowTerminal((v) => !v)} title="Terminal">
               <TerminalSquare size={14} />
-            </button>
-            <button className="quick-icon-btn" onClick={() => setShowGraph(true)} title="Graph view">
+            </Button>
+            <Button variant="ghost" size="icon" className="quick-icon-btn" onClick={() => setShowGraph(true)} title="Graph view">
               <Network size={14} />
-            </button>
-            <button className="quick-icon-btn" onClick={() => setShowSettings(true)} title="Settings">
+            </Button>
+            <Button variant="ghost" size="icon" className="quick-icon-btn" onClick={() => setShowSettings(true)} title="Settings">
               <Settings size={14} />
-            </button>
-            <button className="quick-icon-btn" onClick={() => setShowSidebar(false)} title="Collapse sidebar">
+            </Button>
+            <Button variant="ghost" size="icon" className="quick-icon-btn" onClick={() => setShowSidebar(false)} title="Collapse sidebar">
               <PanelLeftClose size={14} />
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -1954,15 +1932,15 @@ export default function App() {
             )}
 
             <div className="toolbar-actions">
-              <button className="icon-btn" onClick={() => currentPath && setShowHistory(true)} title="Version history">
+              <Button variant="ghost" size="icon" className="icon-btn" onClick={() => currentPath && setShowHistory(true)} title="Version history">
                 <Clock size={14} />
-              </button>
-              <button className="icon-btn" onClick={() => setShowContext((v) => !v)} title="Toggle links panel">
+              </Button>
+              <Button variant="ghost" size="icon" className="icon-btn" onClick={() => setShowContext((v) => !v)} title="Toggle links panel">
                 {showContext ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
-              </button>
-              <button className={`icon-btn ${showTerminal ? 'active' : ''}`} onClick={() => setShowTerminal((v) => !v)} title="Toggle terminal">
+              </Button>
+              <Button variant="ghost" size="icon" className={`icon-btn ${showTerminal ? 'active' : ''}`} onClick={() => setShowTerminal((v) => !v)} title="Toggle terminal">
                 <TerminalSquare size={14} />
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -2121,8 +2099,8 @@ export default function App() {
         <div className="composer-bar">
           <div className="composer-left composer-metrics">
             <PenLine size={15} />
-            <span>{wordCount.toLocaleString()} words</span>
-            <span>{charCount.toLocaleString()} characters</span>
+            <span><span className="composer-stat-label">Words</span> {wordCount.toLocaleString()}</span>
+            <span><span className="composer-stat-label">Chars</span> {charCount.toLocaleString()}</span>
           </div>
           <div className={`composer-sync-group ${isDirty ? 'dirty' : 'saved'}`}>
             <button
@@ -2148,131 +2126,123 @@ export default function App() {
         </div>
       </main>
 
-      {showPalette && (
-        <div className="palette-overlay" onClick={() => setShowPalette(false)}>
-          <div className="palette" onClick={(e) => e.stopPropagation()}>
-            <input
-              autoFocus
-              placeholder="Command Palette (Cmd/Ctrl + K)"
-              value={paletteQuery}
-              onChange={(e) => setPaletteQuery(e.target.value)}
-              onKeyDown={async (event) => {
-                if (!paletteResults.length) return;
-                if (event.key === 'ArrowDown') {
-                  event.preventDefault();
-                  setPaletteIndex((idx) => Math.min(idx + 1, paletteResults.length - 1));
-                  return;
-                }
-                if (event.key === 'ArrowUp') {
-                  event.preventDefault();
-                  setPaletteIndex((idx) => Math.max(idx - 1, 0));
-                  return;
-                }
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  await runPaletteItem(paletteResults[paletteIndex] || paletteResults[0]);
-                }
-              }}
-            />
-            <div className="palette-results">
-              {paletteResults.map((item, index) => (
-                <button
+      <CommandDialog open={showPalette} onOpenChange={(v) => { if (!v) { setShowPalette(false); setPaletteQuery(''); } }}>
+        <CommandInput
+          placeholder="Command Palette (Cmd/Ctrl + K)"
+          value={paletteQuery}
+          onValueChange={setPaletteQuery}
+        />
+        <CommandList>
+          <CommandEmpty>No results found.</CommandEmpty>
+          {paletteResults.some((item) => item.kind === 'action') && (
+            <CommandGroup heading="Actions">
+              {paletteResults.filter((item) => item.kind === 'action').map((item) => (
+                <CommandItem
                   key={item.id}
-                  className={index === paletteIndex ? 'active' : ''}
-                  onMouseEnter={() => setPaletteIndex(index)}
-                  onClick={async () => runPaletteItem(item)}
+                  value={item.label}
+                  onSelect={async () => runPaletteItem(item)}
                 >
-                  <span>{item.label}</span>
+                  <span className="palette-item-label">{item.label}</span>
                   <span className="palette-hint">{item.hint}</span>
-                </button>
+                </CommandItem>
               ))}
-            </div>
-          </div>
-        </div>
-      )}
+            </CommandGroup>
+          )}
+          {paletteResults.some((item) => item.kind === 'doc') && (
+            <>
+              <CommandSeparator />
+              <CommandGroup heading="Notes">
+                {paletteResults.filter((item) => item.kind === 'doc').map((item) => (
+                  <CommandItem
+                    key={item.id}
+                    value={item.hint}
+                    onSelect={async () => runPaletteItem(item)}
+                  >
+                    <span className="palette-item-label">{item.label}</span>
+                    <span className="palette-hint">{item.hint}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </>
+          )}
+        </CommandList>
+      </CommandDialog>
 
-      {showFolderPrompt && (
-        <FolderPromptModal
-          value={folderDraft}
-          onChange={setFolderDraft}
-          onSubmit={confirmCreateFolder}
-          onClose={() => {
-            setShowFolderPrompt(false);
-            setFolderDraft('New Folder');
-          }}
-        />
-      )}
+      <FolderPromptModal
+        open={showFolderPrompt}
+        value={folderDraft}
+        onChange={setFolderDraft}
+        onSubmit={confirmCreateFolder}
+        onClose={() => {
+          setShowFolderPrompt(false);
+          setFolderDraft('New Folder');
+        }}
+      />
 
-      {showRenamePrompt && (
-        <RenamePromptModal
-          value={renameDraft}
-          onChange={setRenameDraft}
-          onSubmit={confirmRenameNote}
-          onClose={() => {
-            setShowRenamePrompt(false);
-            setRenameDraft('');
-            setRenameTargetPath('');
-          }}
-        />
-      )}
+      <RenamePromptModal
+        open={showRenamePrompt}
+        value={renameDraft}
+        onChange={setRenameDraft}
+        onSubmit={confirmRenameNote}
+        onClose={() => {
+          setShowRenamePrompt(false);
+          setRenameDraft('');
+          setRenameTargetPath('');
+        }}
+      />
 
       {showGraph && <GraphView onClose={() => setShowGraph(false)} onOpen={loadPath} />}
 
-      {showSettings && (
-        <SettingsPanel
-          settings={settings}
-          onSettingsChange={handleSettingsChange}
-          syncConfig={syncConfig}
-          syncBusy={syncBusy}
-          syncStatus={syncStatus}
-          onSyncNow={runVaultSync}
-          onSyncTokenSave={saveSyncToken}
-          onSyncTokenClear={clearSyncToken}
-          onSyncInit={async () => {
-            await window.ngobs.sync.init();
-            await refreshSyncConfig();
-            await refreshSyncStatus();
-          }}
-          onSyncSetRemote={async (url) => {
-            await window.ngobs.sync.setRemote(url);
-            await refreshSyncConfig();
-            await refreshSyncStatus();
-          }}
-          onSyncCreateRepo={async (token, name, isPrivate) => {
-            await window.ngobs.sync.createRepo(token, name, isPrivate);
-            await refreshSyncConfig();
-            await refreshSyncStatus();
-          }}
-          onClose={() => setShowSettings(false)}
-        />
-      )}
+      {showSettings && <SettingsPanel
+        settings={settings}
+        onSettingsChange={handleSettingsChange}
+        syncConfig={syncConfig}
+        syncBusy={syncBusy}
+        syncStatus={syncStatus}
+        onSyncNow={runVaultSync}
+        onSyncTokenSave={saveSyncToken}
+        onSyncTokenClear={clearSyncToken}
+        onSyncInit={async () => {
+          await window.ngobs.sync.init();
+          await refreshSyncConfig();
+          await refreshSyncStatus();
+        }}
+        onSyncSetRemote={async (url) => {
+          await window.ngobs.sync.setRemote(url);
+          await refreshSyncConfig();
+          await refreshSyncStatus();
+        }}
+        onSyncCreateRepo={async (token, name, isPrivate) => {
+          await window.ngobs.sync.createRepo(token, name, isPrivate);
+          await refreshSyncConfig();
+          await refreshSyncStatus();
+        }}
+        onClose={() => setShowSettings(false)}
+      />}
 
-      {showDiff && (
-        <DiffModal
-          oldText={loadedContentRef.current}
-          newText={content}
-          fileName={currentPath?.split('/').pop() || ''}
-          onRevert={() => {
-            setContent(loadedContentRef.current);
-            setShowDiff(false);
-          }}
-          onClose={() => setShowDiff(false)}
-        />
-      )}
+      <DiffModal
+        open={showDiff}
+        oldText={loadedContentRef.current}
+        newText={content}
+        fileName={currentPath?.split('/').pop() || ''}
+        onRevert={() => {
+          setContent(loadedContentRef.current);
+          setShowDiff(false);
+        }}
+        onClose={() => setShowDiff(false)}
+      />
 
-      {showHistory && (
-        <HistoryPanel
-          currentPath={currentPath}
-          content={content}
-          isDirty={isDirty}
-          onRestore={(restoredContent) => {
-            setContent(restoredContent);
-            loadedContentRef.current = restoredContent;
-            tabCacheRef.current[currentPath] = { content: restoredContent, loadedContent: restoredContent };
-          }}
-          onClose={() => setShowHistory(false)}
-        />
-      )}
+      {showHistory && <HistoryPanel
+        currentPath={currentPath}
+        content={content}
+        isDirty={isDirty}
+        onRestore={(restoredContent) => {
+          setContent(restoredContent);
+          loadedContentRef.current = restoredContent;
+          tabCacheRef.current[currentPath] = { content: restoredContent, loadedContent: restoredContent };
+        }}
+        onClose={() => setShowHistory(false)}
+      />}
 
       {tabMenu && (
         <div

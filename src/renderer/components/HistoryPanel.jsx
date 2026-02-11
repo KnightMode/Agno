@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { X, RotateCcw, Copy } from 'lucide-react';
+import { RotateCcw, Copy, X } from 'lucide-react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
@@ -112,9 +112,7 @@ export default function HistoryPanel({ currentPath, content, isDirty, onRestore,
   }, [selected, currentPath, content]);
 
   useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === 'Escape') onClose();
-    };
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
@@ -145,8 +143,8 @@ export default function HistoryPanel({ currentPath, content, isDirty, onRestore,
   }
 
   return (
-    <div className="history-overlay" onClick={onClose}>
-      <div className="history-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="history-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="history-modal">
         <div className="history-header">
           <h3>Version History</h3>
           <span className="history-note-name">{currentPath?.split('/').pop()?.replace(/\.md$/, '')}</span>
@@ -194,11 +192,11 @@ export default function HistoryPanel({ currentPath, content, isDirty, onRestore,
               )}
             </div>
             <div className="history-actions">
-              <button className="history-restore-btn" onClick={handleRestore} disabled={selected === 'current' || selected === null}>
+              <button className="setting-action-btn" onClick={handleRestore} disabled={selected === 'current' || selected === null}>
                 <RotateCcw size={13} />
                 Restore
               </button>
-              <button className="history-copy-btn" onClick={handleCopy}>
+              <button className="setting-action-btn" onClick={handleCopy}>
                 <Copy size={13} />
                 Copy
               </button>
