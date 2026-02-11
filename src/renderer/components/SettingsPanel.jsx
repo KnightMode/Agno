@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { X, RefreshCw, Download, RotateCcw } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
 import { Switch } from './ui/switch';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
@@ -99,6 +99,36 @@ export default function SettingsPanel({
   const [setupBusy, setSetupBusy] = useState(false);
   const [setupError, setSetupError] = useState('');
   const [remoteMode, setRemoteMode] = useState('create');
+
+  const [appVersion, setAppVersion] = useState('');
+  const [updateStatus, setUpdateStatus] = useState(null); // { state, version?, percent?, message? }
+
+  useEffect(() => {
+    window.ngobs.updater.getVersion().then(setAppVersion);
+    const unsub = window.ngobs.updater.onStatus(setUpdateStatus);
+    return unsub;
+  }, []);
+
+  const handleCheckForUpdates = useCallback(async () => {
+    setUpdateStatus({ state: 'checking' });
+    try {
+      await window.ngobs.updater.check();
+    } catch (err) {
+      setUpdateStatus({ state: 'error', message: err?.message || 'Update check failed.' });
+    }
+  }, []);
+
+  const handleDownloadUpdate = useCallback(async () => {
+    try {
+      await window.ngobs.updater.download();
+    } catch (err) {
+      setUpdateStatus({ state: 'error', message: err?.message || 'Download failed.' });
+    }
+  }, []);
+
+  const handleInstallUpdate = useCallback(() => {
+    window.ngobs.updater.install();
+  }, []);
 
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -447,8 +477,71 @@ export default function SettingsPanel({
             <TabsContent value="about">
               <div className="settings-about">
                 <div className="about-name">Agno</div>
-                <div className="about-version">Version 1.0.0</div>
+                <div className="about-version">Version {appVersion || '...'}</div>
                 <div className="about-desc">A native macOS knowledge app for writing, linking, and thinking.</div>
+
+                <div className="about-update">
+                  {(!updateStatus || updateStatus.state === 'error' || updateStatus.state === 'up-to-date') && (
+                    <Button
+                      className="setting-action-btn"
+                      onClick={handleCheckForUpdates}
+                    >
+                      <RefreshCw size={14} />
+                      Check for Updates
+                    </Button>
+                  )}
+
+                  {updateStatus?.state === 'checking' && (
+                    <div className="update-status">
+                      <RefreshCw size={14} className="update-spinner" />
+                      <span>Checking for updates...</span>
+                    </div>
+                  )}
+
+                  {updateStatus?.state === 'up-to-date' && (
+                    <div className="update-status update-success">
+                      You're up to date!
+                    </div>
+                  )}
+
+                  {updateStatus?.state === 'available' && (
+                    <div className="update-status">
+                      <span>Version {updateStatus.version} is available.</span>
+                      <Button className="setting-action-btn" onClick={handleDownloadUpdate}>
+                        <Download size={14} />
+                        Download Update
+                      </Button>
+                    </div>
+                  )}
+
+                  {updateStatus?.state === 'downloading' && (
+                    <div className="update-status">
+                      <span>Downloading... {updateStatus.percent}%</span>
+                      <div className="update-progress-bar">
+                        <div
+                          className="update-progress-fill"
+                          style={{ width: `${updateStatus.percent || 0}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {updateStatus?.state === 'downloaded' && (
+                    <div className="update-status">
+                      <span>Update ready to install{updateStatus.version ? ` (v${updateStatus.version})` : ''}.</span>
+                      <Button className="setting-action-btn" onClick={handleInstallUpdate}>
+                        <RotateCcw size={14} />
+                        Install &amp; Restart
+                      </Button>
+                    </div>
+                  )}
+
+                  {updateStatus?.state === 'error' && (
+                    <div className="update-status update-error">
+                      {updateStatus.message || 'Update check failed.'}
+                    </div>
+                  )}
+                </div>
               </div>
             </TabsContent>
           </div>

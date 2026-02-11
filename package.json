@@ -41,6 +41,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-force-graph-2d": "^1.29.1",
+    "electron-updater": "^6.3.9",
     "tailwind-merge": "^3.4.0",
     "tailwindcss": "^4.1.18"
   },
@@ -70,6 +71,11 @@
       "src/preload/**/*",
       "build/icon.png",
       "package.json"
-    ]
+    ],
+    "publish": {
+      "provider": "github",
+      "owner": "KnightMode",
+      "repo": "Agno"
+    }
   }
 }

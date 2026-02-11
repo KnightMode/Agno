@@ -5,8 +5,13 @@ const { execFile } = require('child_process');
 const chokidar = require('chokidar');
 const log = require('electron-log');
 const pty = require('node-pty');
+const { autoUpdater } = require('electron-updater');
 
 log.initialize();
+
+autoUpdater.logger = log;
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = true;
 
 app.name = 'Agno';
 app.setName('Agno');
@@ -829,6 +834,54 @@ ipcMain.handle('terminal:kill', async (_event, id) => {
   terminals.get(id)?.kill();
   terminals.delete(id);
   return true;
+});
+
+// ── Auto-Updater ──
+
+function sendUpdaterStatus(status) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('updater:status', status);
+  }
+}
+
+autoUpdater.on('checking-for-update', () => {
+  sendUpdaterStatus({ state: 'checking' });
+});
+
+autoUpdater.on('update-available', (info) => {
+  sendUpdaterStatus({ state: 'available', version: info.version });
+});
+
+autoUpdater.on('update-not-available', () => {
+  sendUpdaterStatus({ state: 'up-to-date' });
+});
+
+autoUpdater.on('download-progress', (progress) => {
+  sendUpdaterStatus({ state: 'downloading', percent: Math.round(progress.percent) });
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+  sendUpdaterStatus({ state: 'downloaded', version: info.version });
+});
+
+autoUpdater.on('error', (err) => {
+  sendUpdaterStatus({ state: 'error', message: err?.message || 'Update check failed.' });
+});
+
+ipcMain.handle('updater:get-version', () => {
+  return app.getVersion();
+});
+
+ipcMain.handle('updater:check', async () => {
+  return autoUpdater.checkForUpdates();
+});
+
+ipcMain.handle('updater:download', async () => {
+  return autoUpdater.downloadUpdate();
+});
+
+ipcMain.handle('updater:install', () => {
+  autoUpdater.quitAndInstall();
 });
 
 function sendToRenderer(channel) {
