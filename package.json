@@ -60,7 +60,6 @@
     "mac": {
       "icon": "build/icon.png",
       "category": "public.app-category.productivity",
-      "identity": null,
       "target": [
         "dmg",
         "zip"
