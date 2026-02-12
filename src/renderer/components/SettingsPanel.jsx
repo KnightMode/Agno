@@ -130,6 +130,10 @@ export default function SettingsPanel({
     window.ngobs.updater.install();
   }, []);
 
+  const handleOpenRelease = useCallback(() => {
+    window.ngobs.updater.openRelease();
+  }, []);
+
   useEffect(() => {
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', onKey);
@@ -538,7 +542,11 @@ export default function SettingsPanel({
 
                   {updateStatus?.state === 'error' && (
                     <div className="update-status update-error">
-                      {updateStatus.message || 'Update check failed.'}
+                      <span>{updateStatus.message || 'Update check failed.'}</span>
+                      <Button className="setting-action-btn" onClick={handleOpenRelease}>
+                        <Download size={14} />
+                        Download from GitHub
+                      </Button>
                     </div>
                   )}
                 </div>

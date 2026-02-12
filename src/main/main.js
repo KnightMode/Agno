@@ -884,6 +884,10 @@ ipcMain.handle('updater:install', () => {
   autoUpdater.quitAndInstall();
 });
 
+ipcMain.handle('updater:open-release', () => {
+  shell.openExternal('https://github.com/KnightMode/Agno/releases/latest');
+});
+
 function sendToRenderer(channel) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel);
