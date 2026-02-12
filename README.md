@@ -5,8 +5,9 @@
 <h1 align="center">Agno</h1>
 
 <p align="center">
-  A local-first knowledge base and note-taking app for macOS.<br>
-  Markdown files, wiki links, a built-in terminal, and GitHub sync — no cloud account required.
+  <strong>A free, open-source knowledge base for macOS.</strong><br>
+  Your notes live as plain markdown files on your machine — not on someone else's server.<br>
+  Sync to GitHub for free. No subscriptions. No cloud lock-in. You own your data.
 </p>
 
 <p align="center">
@@ -15,29 +16,47 @@
 
 ---
 
-Agno stores everything as plain markdown files in a folder (a "vault") on your machine. You own your notes. Back them up however you like, or sync to GitHub directly from the app.
+## Why Agno?
 
-## Features
+Most knowledge apps charge you monthly just to sync your own notes across devices. Agno takes a different approach — your vault is a folder of markdown files, and syncing happens through GitHub, a tool you already use. No proprietary format, no vendor lock-in, no recurring fees.
 
-**Editor** — Click any block of text to edit it inline. Markdown is rendered live with syntax highlighting for 14+ languages. No mode switching, no separate preview pane.
+### Built-in Terminal
 
-**Wiki Links** — Link notes with `[[Note Name]]` syntax. A backlinks panel shows what links to the current note, and an outgoing links panel shows what it links to.
+Run your shell without leaving the app. `Cmd+`` ` `` opens a full terminal pane powered by xterm.js — run scripts, commit code, manage your system, all alongside your notes. Position it at the bottom or right side of the window.
 
-**Knowledge Graph** — Interactive force-directed graph of your vault built from wiki links. Pin nodes, collapse branches, and navigate visually.
+### Free Sync via GitHub
 
-**Find** — Vault-wide fuzzy search (`Cmd+K` / `Cmd+P`) across titles, paths, and content. In-note find (`Cmd+F`) with match highlighting and prev/next navigation.
+One-click sync to any GitHub repo using a personal access token. No OAuth, no third-party services, no $8-10/month sync subscription. Your notes are version-controlled by default.
 
-**Split View** — Open a second note side-by-side for reference while editing.
+### Knowledge Graph
 
-**Terminal** — Native terminal pane (`Cmd+`\``) powered by xterm.js and node-pty. Runs your default shell inside the app, positionable at the bottom or right.
+See how your ideas connect. An interactive force-directed graph is built automatically from your `[[wiki links]]`, letting you explore relationships between notes visually. Pin nodes, collapse branches, and click to navigate.
 
-**Version History** — Browse and restore previous versions of any note. Visual diff view shows exactly what changed.
+### Inline Markdown Editor
 
-**GitHub Sync** — Initialize a git repo in your vault, create or link a GitHub repository, and sync with one click. Uses personal access tokens — no OAuth flow.
+Click any block to edit it in place. Markdown renders live with syntax highlighting for 14+ languages. No mode switching, no separate preview pane — just write.
 
-**Customization** — Three themes (dark, light, warm), seven accent colors, 13 font families, adjustable font size, line height, and content width.
+### Wiki Links & Backlinks
 
-**Tabs** — Multi-tab interface with pinning, context menus, and split-from-tab support.
+Link notes with `[[Note Name]]` syntax. A backlinks panel shows every note that references the current one, and an outgoing links panel shows what it links to — building a personal wiki naturally as you write.
+
+### Version History
+
+Every save is tracked. Browse previous versions of any note and see exactly what changed with a visual diff view. Restore any version with one click.
+
+### Fast Search
+
+Vault-wide fuzzy search (`Cmd+K` / `Cmd+P`) across titles, paths, and content. In-note find (`Cmd+F`) with match highlighting and prev/next navigation.
+
+### Tabs & Split View
+
+Work with multiple notes in tabs — pin them, reorder them, or split into side-by-side view for reference while editing.
+
+### Fully Customizable
+
+Three themes (dark, light, warm), seven accent colors, 13 font families, adjustable font size, line height, and content width. Make it yours.
+
+---
 
 ## Keyboard Shortcuts
 
@@ -53,9 +72,13 @@ Agno stores everything as plain markdown files in a folder (a "vault") on your m
 | `Cmd+`` ` `` | Toggle terminal |
 | `Cmd+Enter` / `Esc` | Commit inline edit |
 
-## Run Locally
+## Install
 
-Requires Node.js and Xcode command line tools (for the native `node-pty` module).
+Download the latest `.dmg` from [Releases](https://github.com/KnightMode/Agno/releases/latest).
+
+## Run from Source
+
+Requires Node.js and Xcode command line tools (for `node-pty`).
 
 ```bash
 npm install
