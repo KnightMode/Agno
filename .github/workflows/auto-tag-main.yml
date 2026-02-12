@@ -126,7 +126,8 @@ jobs:
             dist/*.dmg
             dist/*-mac.zip
             dist/latest-mac.yml
-          generate_release_notes: true
+          body: |
+            > **macOS:** After installing, run `xattr -cr /Applications/Agno.app` if macOS shows a "damaged" warning.
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
