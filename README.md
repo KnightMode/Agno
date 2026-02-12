@@ -9,6 +9,10 @@
   Markdown files, wiki links, a built-in terminal, and GitHub sync — no cloud account required.
 </p>
 
+<p align="center">
+  <img src="build/hero.png" alt="Agno screenshot" width="800">
+</p>
+
 ---
 
 Agno stores everything as plain markdown files in a folder (a "vault") on your machine. You own your notes. Back them up however you like, or sync to GitHub directly from the app.
