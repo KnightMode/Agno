@@ -76,10 +76,7 @@ Three themes (dark, light, warm), seven accent colors, 13 font families, adjusta
 
 Download the latest `.dmg` from [Releases](https://github.com/KnightMode/Agno/releases/latest).
 
-> **macOS Gatekeeper notice:** Since Agno isn't signed with an Apple Developer certificate yet, macOS may show a "damaged" warning. To fix this, run the following after dragging Agno to Applications:
-> ```bash
-> xattr -cr /Applications/Agno.app
-> ```
+> **First launch:** If macOS says it can't verify the developer, go to **System Settings > Privacy & Security**, scroll down, and click **Open Anyway** next to the Agno message.
 
 ## Run from Source
 
