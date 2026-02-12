@@ -87,8 +87,6 @@ contextBridge.exposeInMainWorld('ngobs', {
   updater: {
     getVersion: () => ipcRenderer.invoke('updater:get-version'),
     check: () => ipcRenderer.invoke('updater:check'),
-    download: () => ipcRenderer.invoke('updater:download'),
-    install: () => ipcRenderer.invoke('updater:install'),
     openRelease: () => ipcRenderer.invoke('updater:open-release'),
     onStatus: (callback) => {
       const listener = (_event, payload) => callback(payload);

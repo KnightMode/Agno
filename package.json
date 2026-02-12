@@ -1,7 +1,7 @@
 {
   "name": "agno",
   "version": "0.2.6",
-  "description": "Agno — a native macOS knowledge app with terminal integration.",
+  "description": "Agno — a knowledge app for macOS with terminal integration.",
   "main": "src/main/main.js",
   "author": "",
   "license": "MIT",

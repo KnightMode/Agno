@@ -856,13 +856,9 @@ autoUpdater.on('update-not-available', () => {
   sendUpdaterStatus({ state: 'up-to-date' });
 });
 
-autoUpdater.on('download-progress', (progress) => {
-  sendUpdaterStatus({ state: 'downloading', percent: Math.round(progress.percent) });
-});
+autoUpdater.on('download-progress', () => {});
 
-autoUpdater.on('update-downloaded', (info) => {
-  sendUpdaterStatus({ state: 'downloaded', version: info.version });
-});
+autoUpdater.on('update-downloaded', () => {});
 
 autoUpdater.on('error', (err) => {
   sendUpdaterStatus({ state: 'error', message: err?.message || 'Update check failed.' });
@@ -874,10 +870,6 @@ ipcMain.handle('updater:get-version', () => {
 
 ipcMain.handle('updater:check', async () => {
   return autoUpdater.checkForUpdates();
-});
-
-ipcMain.handle('updater:download', async () => {
-  return autoUpdater.downloadUpdate();
 });
 
 ipcMain.handle('updater:install', () => {
