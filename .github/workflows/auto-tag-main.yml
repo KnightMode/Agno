@@ -87,6 +87,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Stamp version from tag into package.json
+        run: |
+          TAG="${{ needs.tag-main.outputs.tag }}"
+          VERSION="${TAG#v}"
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = '${VERSION}';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          echo "Stamped version: $VERSION"
+
       - name: Build app
         run: npm run build:web && npx electron-builder --publish never
 
@@ -97,6 +109,7 @@ jobs:
           path: |
             dist/*.dmg
             dist/*-mac.zip
+            dist/latest-mac.yml
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
@@ -105,6 +118,7 @@ jobs:
           files: |
             dist/*.dmg
             dist/*-mac.zip
+            dist/latest-mac.yml
           generate_release_notes: true
           fail_on_unmatched_files: true
         env:

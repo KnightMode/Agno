@@ -83,5 +83,16 @@ contextBridge.exposeInMainWorld('ngobs', {
     setToken: (token) => ipcRenderer.invoke('sync:set-token', token),
     clearToken: () => ipcRenderer.invoke('sync:clear-token'),
     run: () => ipcRenderer.invoke('sync:run')
+  },
+  updater: {
+    getVersion: () => ipcRenderer.invoke('updater:get-version'),
+    check: () => ipcRenderer.invoke('updater:check'),
+    download: () => ipcRenderer.invoke('updater:download'),
+    install: () => ipcRenderer.invoke('updater:install'),
+    onStatus: (callback) => {
+      const listener = (_event, payload) => callback(payload);
+      ipcRenderer.on('updater:status', listener);
+      return () => ipcRenderer.removeListener('updater:status', listener);
+    }
   }
 });
