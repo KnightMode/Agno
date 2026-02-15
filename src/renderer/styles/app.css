@@ -2332,6 +2332,7 @@ mark.note-find-hit.active {
    ══════════════════════════════════════════════════════════════ */
 
 .context-pane {
+  position: relative;
   min-height: 0;
   min-width: 0;
   overflow-y: auto;
@@ -2474,6 +2475,7 @@ mark.note-find-hit.active {
 }
 
 .terminal-side {
+  position: relative;
   min-width: 0;
   border-left: 1px solid var(--separator);
   background: linear-gradient(180deg, rgba(20, 20, 20, 0.95), rgba(17, 17, 17, 0.98));
@@ -2520,6 +2522,13 @@ body.is-resizing .pane-resize-handle::after {
 .pane-resize-handle.vertical {
   width: 8px;
   cursor: col-resize;
+}
+
+.pane-resize-handle.vertical.pane-resize-handle-inset-left {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
 }
 
 .pane-resize-handle.vertical::after {

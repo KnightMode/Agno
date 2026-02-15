@@ -2124,15 +2124,12 @@ export default function App() {
           </div>
 
           {showContext && (
-            <div
-              className="pane-resize-handle vertical"
-              onMouseDown={(event) => beginResizeDrag('context', event)}
-              title="Resize side pane"
-            />
-          )}
-
-          {showContext && (
             <aside className="context-pane">
+              <div
+                className="pane-resize-handle vertical pane-resize-handle-inset-left"
+                onMouseDown={(event) => beginResizeDrag('context', event)}
+                title="Resize side pane"
+              />
               <section className="context-section">
                 <h4>Backlinks</h4>
                 {backlinks.length ? (
@@ -2175,16 +2172,15 @@ export default function App() {
             </aside>
           )}
 
-          {terminalOnRight && showTerminal && (
-            <div
-              className="pane-resize-handle vertical"
-              onMouseDown={(event) => beginResizeDrag('terminal-width', event)}
-              title="Resize terminal"
-            />
-          )}
-
           {terminalOnRight && (
             <aside className={`terminal-side ${showTerminal ? '' : 'hidden'}`}>
+              {showTerminal && (
+                <div
+                  className="pane-resize-handle vertical pane-resize-handle-inset-left"
+                  onMouseDown={(event) => beginResizeDrag('terminal-width', event)}
+                  title="Resize terminal"
+                />
+              )}
               <TerminalPane visible={showTerminal} />
             </aside>
           )}
