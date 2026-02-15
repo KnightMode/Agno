@@ -5,7 +5,7 @@
 <h1 align="center">Agno</h1>
 
 <p align="center">
-  <strong>A free, open-source knowledge base for macOS.</strong><br>
+  <strong>A free, open-source cross-platform desktop knowledge base.</strong><br>
   Your notes live as plain markdown files on your machine — not on someone else's server.<br>
   Sync to GitHub for free. No subscriptions. No cloud lock-in. You own your data.
 </p>
@@ -74,7 +74,9 @@ Three themes (dark, light, warm), seven accent colors, 13 font families, adjusta
 
 ## Install
 
-Download the latest `.dmg` from [Releases](https://github.com/KnightMode/Agno/releases/latest).
+Download the latest installer from [Releases](https://github.com/KnightMode/Agno/releases/latest):
+- macOS: `.dmg`
+- Windows: `.exe`
 
 > **First launch:** If macOS says it can't verify the developer, go to **System Settings > Privacy & Security**, scroll down, and click **Open Anyway** next to the Agno message.
 
@@ -93,7 +95,7 @@ npm run dev
 npm run build
 ```
 
-Produces a `.dmg` and `.zip` in the `dist/` folder.
+Produces platform-specific artifacts in `dist/` (including macOS `.dmg` and Windows `.exe`).
 
 ## Stack
 
