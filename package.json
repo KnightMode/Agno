@@ -65,6 +65,12 @@
         "zip"
       ]
     },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
     "files": [
       "dist/**/*",
       "src/main/**/*",

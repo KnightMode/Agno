@@ -76,7 +76,7 @@ jobs:
           git tag -a "$TAG" -m "Release $TAG"
           git push origin "$TAG"
 
-  release-macos:
+  build-macos:
     needs: tag-main
     if: needs.tag-main.outputs.skip != 'true'
     runs-on: macos-latest
@@ -107,7 +107,7 @@ jobs:
           echo "Stamped version: $VERSION"
 
       - name: Build app
-        run: npm run build:web && npx electron-builder --publish never
+        run: npm run build:web && npx electron-builder --mac --publish never
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -118,16 +118,117 @@ jobs:
             dist/*-mac.zip
             dist/latest-mac.yml
 
-      - name: Publish GitHub Release
+  build-windows:
+    needs: tag-main
+    if: needs.tag-main.outputs.skip != 'true'
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Stamp version from tag into package.json
+        shell: bash
+        run: |
+          TAG="${{ needs.tag-main.outputs.tag }}"
+          VERSION="${TAG#v}"
+          node -e "
+            const fs = require('fs');
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+            pkg.version = '${VERSION}';
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+          "
+          echo "Stamped version: $VERSION"
+
+      - name: Build app
+        run: npm run build:web && npx electron-builder --win --publish never
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: |
+            dist/*.exe
+            dist/*.blockmap
+            dist/*-win.zip
+            dist/latest.yml
+
+  create-release:
+    needs: tag-main
+    if: needs.tag-main.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.tag-main.outputs.tag }}
+          body: |
+            > **First launch:** If macOS says it can't verify the developer, go to **System Settings > Privacy & Security** and click **Open Anyway**.
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-macos:
+    needs:
+      - tag-main
+      - build-macos
+      - create-release
+    if: needs.tag-main.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download macOS build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-build
+          path: release-assets
+
+      - name: Upload macOS release assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.tag-main.outputs.tag }}
           files: |
-            dist/*.dmg
-            dist/*-mac.zip
-            dist/latest-mac.yml
-          body: |
-            > **First launch:** If macOS says it can't verify the developer, go to **System Settings > Privacy & Security** and click **Open Anyway**.
+            release-assets/*.dmg
+            release-assets/*-mac.zip
+            release-assets/latest-mac.yml
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-windows:
+    needs:
+      - tag-main
+      - build-windows
+      - create-release
+    if: needs.tag-main.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download Windows build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-build
+          path: release-assets
+
+      - name: Upload Windows release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.tag-main.outputs.tag }}
+          files: |
+            release-assets/*.exe
+            release-assets/*.blockmap
+            release-assets/*-win.zip
+            release-assets/latest.yml
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
