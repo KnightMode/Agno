@@ -176,6 +176,18 @@ const CONTENT_WIDTH_MAX = 1400;
 const CONTENT_WIDTH_STEP = 10;
 const CONTENT_WIDTH_DEFAULT = 760;
 const CONTENT_WIDTH_KEY = 'ngobs.contentWidth';
+const CONTEXT_WIDTH_KEY = 'ngobs.contextWidth';
+const CONTEXT_WIDTH_DEFAULT = 280;
+const CONTEXT_WIDTH_MIN = 220;
+const CONTEXT_WIDTH_MAX = 520;
+const TERMINAL_HEIGHT_KEY = 'ngobs.terminalHeight';
+const TERMINAL_HEIGHT_DEFAULT = 200;
+const TERMINAL_HEIGHT_MIN = 120;
+const TERMINAL_HEIGHT_MAX = 520;
+const TERMINAL_WIDTH_KEY = 'ngobs.terminalWidth';
+const TERMINAL_WIDTH_DEFAULT = 360;
+const TERMINAL_WIDTH_MIN = 260;
+const TERMINAL_WIDTH_MAX = 760;
 
 const SETTINGS_DEFAULTS = {
   editorFontSize: 15,
@@ -207,6 +219,12 @@ function loadSettings() {
     return { ...SETTINGS_DEFAULTS, contentWidth: legacyWidth };
   }
   return { ...SETTINGS_DEFAULTS };
+}
+
+function loadPanelSize(key, fallback, min, max) {
+  const value = Number(window.localStorage.getItem(key));
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
 }
 
 function parseFrontmatter(text) {
@@ -670,6 +688,9 @@ export default function App() {
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncStatus, setSyncStatus] = useState('');
   const [syncInfo, setSyncInfo] = useState({ dirty: false, changedCount: 0, lastSync: null });
+  const [contextWidth, setContextWidth] = useState(() => loadPanelSize(CONTEXT_WIDTH_KEY, CONTEXT_WIDTH_DEFAULT, CONTEXT_WIDTH_MIN, CONTEXT_WIDTH_MAX));
+  const [terminalHeight, setTerminalHeight] = useState(() => loadPanelSize(TERMINAL_HEIGHT_KEY, TERMINAL_HEIGHT_DEFAULT, TERMINAL_HEIGHT_MIN, TERMINAL_HEIGHT_MAX));
+  const [terminalWidth, setTerminalWidth] = useState(() => loadPanelSize(TERMINAL_WIDTH_KEY, TERMINAL_WIDTH_DEFAULT, TERMINAL_WIDTH_MIN, TERMINAL_WIDTH_MAX));
 
   const contentWidth = settings.contentWidth;
 
@@ -1663,6 +1684,55 @@ export default function App() {
   }, [openTabs.length, showSidebar]);
 
   useEffect(() => {
+    window.localStorage.setItem(CONTEXT_WIDTH_KEY, String(contextWidth));
+  }, [contextWidth]);
+
+  useEffect(() => {
+    window.localStorage.setItem(TERMINAL_HEIGHT_KEY, String(terminalHeight));
+  }, [terminalHeight]);
+
+  useEffect(() => {
+    window.localStorage.setItem(TERMINAL_WIDTH_KEY, String(terminalWidth));
+  }, [terminalWidth]);
+
+  const beginResizeDrag = useCallback((axis, event) => {
+    event.preventDefault();
+
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const startContextWidth = contextWidth;
+    const startTerminalHeight = terminalHeight;
+    const startTerminalWidth = terminalWidth;
+
+    const onMove = (moveEvent) => {
+      if (axis === 'context') {
+        const next = startContextWidth + (startX - moveEvent.clientX);
+        setContextWidth(Math.min(CONTEXT_WIDTH_MAX, Math.max(CONTEXT_WIDTH_MIN, next)));
+      }
+
+      if (axis === 'terminal-height') {
+        const next = startTerminalHeight + (startY - moveEvent.clientY);
+        setTerminalHeight(Math.min(TERMINAL_HEIGHT_MAX, Math.max(TERMINAL_HEIGHT_MIN, next)));
+      }
+
+      if (axis === 'terminal-width') {
+        const next = startTerminalWidth + (startX - moveEvent.clientX);
+        setTerminalWidth(Math.min(TERMINAL_WIDTH_MAX, Math.max(TERMINAL_WIDTH_MIN, next)));
+      }
+    };
+
+    const onUp = () => {
+      document.body.classList.remove('is-resizing');
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+
+    document.body.classList.add('is-resizing');
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [contextWidth, terminalHeight, terminalWidth]);
+
+  useEffect(() => {
     const el = tabbarRef.current;
     if (!el) return;
     const active = el.querySelector('.top-tab.active');
@@ -1834,7 +1904,14 @@ export default function App() {
         </div>
       </aside>
 
-      <main className={`workspace ${(showTerminal && terminalOnBottom) ? 'terminal-open' : 'terminal-closed'}`}>
+      <main
+        className={`workspace ${(showTerminal && terminalOnBottom) ? 'terminal-open' : 'terminal-closed'}`}
+        style={{
+          '--context-width': `${contextWidth}px`,
+          '--terminal-height': `${terminalHeight}px`,
+          '--terminal-width': `${terminalWidth}px`
+        }}
+      >
         <div className="topbar">
           {!showSidebar && (
             <button className="sidebar-restore-btn" onClick={() => setShowSidebar(true)} title="Show sidebar (⌘\\)">
@@ -2048,6 +2125,11 @@ export default function App() {
 
           {showContext && (
             <aside className="context-pane">
+              <div
+                className="pane-resize-handle vertical pane-resize-handle-inset-left"
+                onMouseDown={(event) => beginResizeDrag('context', event)}
+                title="Resize side pane"
+              />
               <section className="context-section">
                 <h4>Backlinks</h4>
                 {backlinks.length ? (
@@ -2092,12 +2174,30 @@ export default function App() {
 
           {terminalOnRight && (
             <aside className={`terminal-side ${showTerminal ? '' : 'hidden'}`}>
+              {showTerminal && (
+                <div
+                  className="pane-resize-handle vertical pane-resize-handle-inset-left"
+                  onMouseDown={(event) => beginResizeDrag('terminal-width', event)}
+                  title="Resize terminal"
+                />
+              )}
               <TerminalPane visible={showTerminal} />
             </aside>
           )}
         </div>
 
-        {terminalOnBottom && <TerminalPane visible={showTerminal} />}
+        {terminalOnBottom && (
+          <div className="terminal-bottom-shell">
+            {showTerminal && (
+              <div
+                className="pane-resize-handle horizontal"
+                onMouseDown={(event) => beginResizeDrag('terminal-height', event)}
+                title="Resize terminal"
+              />
+            )}
+            <TerminalPane visible={showTerminal} />
+          </div>
+        )}
 
         <div className="composer-bar">
           <div className="composer-left composer-metrics">
