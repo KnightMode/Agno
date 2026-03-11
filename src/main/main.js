@@ -6,6 +6,17 @@ const chokidar = require('chokidar');
 const log = require('electron-log');
 const pty = require('node-pty');
 const { autoUpdater } = require('electron-updater');
+const {
+  answerVaultQuestion,
+  buildChatContext,
+  buildFrontmatterTemplate,
+  buildProjectPulseMarkdown,
+  buildResearchNote,
+  buildVaultAnalysis,
+  buildVaultReviewMarkdown,
+  parseFrontmatter,
+  sanitizeFileName
+} = require('./agent');
 
 log.initialize();
 
@@ -22,6 +33,7 @@ const terminals = new Map();
 let activeVault = null;
 let lastSyncTimestamp = null;
 const MAX_RECENT_VAULTS = 8;
+const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
 const isDev = !app.isPackaged;
 
@@ -120,6 +132,24 @@ function normalizePath(vaultPath, targetPath) {
   return resolved;
 }
 
+async function ensureUniqueRelativePath(vaultPath, relPath) {
+  const ext = path.extname(relPath);
+  const dir = path.dirname(relPath);
+  const base = path.basename(relPath, ext);
+  let nextPath = relPath;
+  let index = 2;
+
+  while (true) {
+    try {
+      await fs.access(normalizePath(vaultPath, nextPath));
+      nextPath = path.join(dir === '.' ? '' : dir, `${base} ${index}${ext}`);
+      index += 1;
+    } catch {
+      return nextPath.replace(/^\.\/+/, '');
+    }
+  }
+}
+
 function runGit(args, cwd) {
   return new Promise((resolve, reject) => {
     execFile('git', args, { cwd, timeout: 60000, maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) => {
@@ -135,6 +165,10 @@ function runGit(args, cwd) {
 
 function syncSecretsPath() {
   return path.join(app.getPath('userData'), 'sync-secrets.json');
+}
+
+function aiSecretsPath() {
+  return path.join(app.getPath('userData'), 'ai-secrets.json');
 }
 
 function encryptSecret(plainText) {
@@ -165,6 +199,295 @@ async function readSyncSecrets() {
 async function writeSyncSecrets(secrets) {
   await fs.mkdir(app.getPath('userData'), { recursive: true });
   await fs.writeFile(syncSecretsPath(), JSON.stringify(secrets, null, 2), 'utf8');
+}
+
+async function readAISecrets() {
+  try {
+    const raw = await fs.readFile(aiSecretsPath(), 'utf8');
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+async function writeAISecrets(secrets) {
+  await fs.mkdir(app.getPath('userData'), { recursive: true });
+  await fs.writeFile(aiSecretsPath(), JSON.stringify(secrets, null, 2), 'utf8');
+}
+
+async function getOpenRouterKey() {
+  const secrets = await readAISecrets();
+  return secrets.openrouter ? decryptSecret(secrets.openrouter) : '';
+}
+
+function getOpenRouterHeaders(token, includeJson = false) {
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    'HTTP-Referer': 'https://github.com/KnightMode/Agno',
+    'X-Title': 'Agno'
+  };
+
+  if (includeJson) headers['Content-Type'] = 'application/json';
+  return headers;
+}
+
+async function openRouterRequest(endpoint, options = {}) {
+  const token = await getOpenRouterKey();
+  if (!token) throw new Error('OpenRouter key is not configured.');
+
+  const response = await fetch(`${OPENROUTER_BASE_URL}${endpoint}`, {
+    method: options.method || 'GET',
+    headers: {
+      ...getOpenRouterHeaders(token, Boolean(options.body)),
+      ...(options.headers || {})
+    },
+    body: options.body
+  });
+
+  const raw = await response.text();
+  let data = null;
+  try {
+    data = raw ? JSON.parse(raw) : null;
+  } catch {
+    data = null;
+  }
+
+  if (!response.ok) {
+    throw new Error(data?.error?.message || data?.message || raw || `OpenRouter request failed (${response.status})`);
+  }
+
+  return data;
+}
+
+function normalizeAssistantContent(content) {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item?.type === 'text') return item.text || '';
+        return '';
+      })
+      .join('');
+  }
+  return '';
+}
+
+function extractLatestUserMessage(messages) {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role === 'user') return String(messages[i].content || '');
+  }
+  return '';
+}
+
+function detectCreateNoteIntent(text) {
+  const value = String(text || '').toLowerCase();
+  if (!value) return false;
+  const action = /\b(create|write|draft|make|generate|save|turn)\b/.test(value);
+  const target = /\b(note|article|doc|document|page|markdown|md file|file)\b/.test(value);
+  return action && target;
+}
+
+function extractMarkdownFence(text) {
+  const source = String(text || '');
+  const matches = Array.from(source.matchAll(/```(?:markdown|md)?\n([\s\S]*?)```/gi));
+  if (!matches.length) return '';
+  return matches
+    .map((match) => String(match[1] || '').trim())
+    .sort((a, b) => b.length - a.length)[0];
+}
+
+function inferRequestedTitle(userText, assistantText, currentPath) {
+  const candidates = [
+    String(assistantText || '').match(/file named [`"]?([^`"\n]+?)(?:\.md)?[`"]?/i)?.[1],
+    String(assistantText || '').match(/created note[:\s]+[`"]?([^`"\n]+?)(?:\.md)?[`"]?/i)?.[1],
+    String(userText || '').match(/\b(?:called|named|titled)\s+["`]?([^"`\n]+?)(?:\.md)?["`]?(?:$|\s)/i)?.[1],
+    String(userText || '').match(/\bcreate\b.*?\b(?:note|article|doc|document|page)\b\s+["`]?([^"`\n]+?)(?:\.md)?["`]?(?:$|\s)/i)?.[1]
+  ].filter(Boolean);
+
+  const cleaned = sanitizeFileName(candidates[0] || '');
+  if (cleaned) return cleaned;
+
+  if (currentPath) {
+    return `${sanitizeFileName(path.basename(currentPath, '.md')) || 'Untitled'} Summary`;
+  }
+
+  return 'Generated Note';
+}
+
+function inferRequestedPath(userText, assistantText, currentPath, title) {
+  const assistantPath =
+    String(assistantText || '').match(/(?:inside|in)\s+your\s+[`"]?([^`"\n]+?)\/[`"]?\s+directory/i)?.[1] ||
+    String(assistantText || '').match(/\bpath[:\s]+[`"]?([^`"\n]+?\.md)[`"]?/i)?.[1];
+  const userPath = String(userText || '').match(/\b(?:in|under|inside)\s+[`"]?([^`"\n]+?)\/[`"]?/i)?.[1];
+  const preferredDir = sanitizeFileName(assistantPath || userPath || '');
+  const currentDir = currentPath ? path.posix.dirname(currentPath) : '';
+  const dir = preferredDir || (currentDir === '.' ? '' : currentDir);
+  const fileName = `${sanitizeFileName(title) || 'Generated Note'}.md`;
+  return dir ? `${dir}/${fileName}` : fileName;
+}
+
+function buildFallbackNoteMarkdown({ title, userText, assistantText, currentPath }) {
+  const fenced = extractMarkdownFence(assistantText);
+  if (fenced) return ensureNoteScaffold(fenced, title);
+
+  const sourceRef = currentPath ? `- Source note: [[${path.basename(currentPath, '.md')}]] (${currentPath})\n` : '';
+  const cleanedAssistant = String(assistantText || '')
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+  const draft = [
+    buildFrontmatterTemplate(title).trimEnd(),
+    '',
+    `# ${title}`,
+    '',
+    '## Objective',
+    String(userText || '').trim() || 'Create a new note from the conversation context.',
+    '',
+    '## Source Context',
+    sourceRef || '- Source note: none',
+    '',
+    '## Draft',
+    cleanedAssistant || 'Draft generated from the conversation.',
+    ''
+  ].join('\n');
+
+  return draft.endsWith('\n') ? draft : `${draft}\n`;
+}
+
+function normalizeChatMessages(messages) {
+  return messages
+    .filter((message) => message && typeof message === 'object' && typeof message.role === 'string')
+    .map((message) => ({
+      role: message.role,
+      content: typeof message.content === 'string' ? message.content : normalizeAssistantContent(message.content)
+    }))
+    .filter((message) => message.content || message.role === 'assistant');
+}
+
+function buildInstructionSearchDirs(relPath = '') {
+  const dirs = [''];
+  let current = String(relPath || '').replace(/\\/g, '/').trim();
+  if (current.endsWith('/')) current = current.slice(0, -1);
+  current = current ? path.posix.dirname(current) : '';
+
+  while (current && current !== '.' && !dirs.includes(current)) {
+    dirs.push(current);
+    const next = path.posix.dirname(current);
+    if (!next || next === current || next === '.') break;
+    current = next;
+  }
+
+  return dirs.reverse();
+}
+
+async function collectRepoInstructionDocs(vaultPath, relPath = '') {
+  const fileNames = ['AGENTS.md', 'CLAUDE.md', '.claude.md'];
+  const docs = [];
+  const seen = new Set();
+
+  for (const dir of buildInstructionSearchDirs(relPath)) {
+    for (const name of fileNames) {
+      const rel = dir ? path.posix.join(dir, name) : name;
+      if (seen.has(rel)) continue;
+      seen.add(rel);
+      try {
+        const content = await fs.readFile(normalizePath(vaultPath, rel), 'utf8');
+        docs.push({
+          path: rel,
+          content: content.slice(0, 7000)
+        });
+      } catch {
+        // Missing instruction files are fine.
+      }
+    }
+  }
+
+  return docs;
+}
+
+function sanitizeRelativeMarkdownPath(relPath, title, fallbackDir = '') {
+  const raw = String(relPath || '').replace(/\\/g, '/').trim();
+  const fallbackBase = sanitizeFileName(title) || 'Untitled';
+  const fallback = fallbackDir && fallbackDir !== '.'
+    ? `${fallbackDir}/${fallbackBase}.md`
+    : `${fallbackBase}.md`;
+
+  const source = raw || fallback;
+  const parts = source
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter((segment) => segment && segment !== '.' && segment !== '..');
+
+  if (!parts.length) return `${fallbackBase}.md`;
+
+  const normalized = parts.map((segment, index) => {
+    const isLeaf = index === parts.length - 1;
+    const cleaned = isLeaf
+      ? sanitizeFileName(segment.replace(/\.md$/i, ''))
+      : sanitizeFileName(segment);
+    return cleaned || (isLeaf ? fallbackBase : 'Untitled');
+  });
+
+  const joined = normalized.join('/');
+  return joined.toLowerCase().endsWith('.md') ? joined : `${joined}.md`;
+}
+
+function ensureNoteScaffold(markdown, title) {
+  const raw = String(markdown || '').trim();
+  const safeTitle = sanitizeFileName(title) || 'Untitled';
+  const parsed = parseFrontmatter(raw);
+  const body = String(parsed.body || '').trim();
+  const hasHeading = /^\s*#\s+/m.test(body);
+  const frontmatter = parsed.frontmatterRaw || buildFrontmatterTemplate(safeTitle);
+  const heading = hasHeading ? '' : `# ${safeTitle}\n\n`;
+  const finalBody = body || '## Summary\n\n## Key Points\n\n## Next Steps\n';
+  return `${frontmatter}${heading}${finalBody.endsWith('\n') ? finalBody : `${finalBody}\n`}`;
+}
+
+async function createAgentNote(vaultPath, currentPath, args = {}) {
+  const title = sanitizeFileName(args.title || path.basename(String(args.rel_path || args.relPath || ''), '.md')) || 'Untitled';
+  const fallbackDir = currentPath ? path.posix.dirname(currentPath) : '';
+  const requestedPath = args.rel_path || args.relPath || '';
+  const relPath = await ensureUniqueRelativePath(
+    vaultPath,
+    sanitizeRelativeMarkdownPath(requestedPath, title, fallbackDir === '.' ? '' : fallbackDir)
+  );
+  const filePath = normalizePath(vaultPath, relPath);
+  const markdown = ensureNoteScaffold(args.markdown, title);
+
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, markdown, 'utf8');
+
+  return {
+    kind: 'create-note',
+    title,
+    openedPath: relPath,
+    updatedPaths: [relPath],
+    message: `Created ${relPath}`
+  };
+}
+
+async function runAgentToolCall(vaultPath, currentPath, toolCall) {
+  if (!toolCall?.function?.name) {
+    throw new Error('Invalid tool call received from model.');
+  }
+
+  let args = {};
+  try {
+    args = JSON.parse(toolCall.function.arguments || '{}');
+  } catch {
+    throw new Error(`Tool arguments for ${toolCall.function.name} were not valid JSON.`);
+  }
+
+  switch (toolCall.function.name) {
+    case 'create_note':
+      return createAgentNote(vaultPath, currentPath, args);
+    default:
+      throw new Error(`Unsupported tool call: ${toolCall.function.name}`);
+  }
 }
 
 function parseGitHubRemote(remoteUrl) {
@@ -486,6 +809,334 @@ ipcMain.handle('graph:data', async () => {
   }
 
   return { nodes, links };
+});
+
+ipcMain.handle('agent:overview', async () => {
+  if (!activeVault) throw new Error('No active vault');
+  const docs = await indexMarkdown(activeVault);
+  return buildVaultAnalysis(activeVault, docs);
+});
+
+ipcMain.handle('agent:chat', async (_event, payload) => {
+  if (!activeVault) throw new Error('No active vault');
+
+  const messages = normalizeChatMessages(Array.isArray(payload?.messages) ? payload.messages : []);
+  const model = String(payload?.model || '').trim();
+  const currentPath = payload?.currentPath ? String(payload.currentPath) : '';
+  if (!model) throw new Error('Select an OpenRouter model in Settings.');
+  if (!messages.length) throw new Error('No chat messages provided.');
+
+  const latestUser = extractLatestUserMessage(messages);
+  const wantsNoteCreation = detectCreateNoteIntent(latestUser);
+  const context = await buildChatContext(
+    activeVault,
+    latestUser,
+    currentPath,
+    payload?.currentContent ? String(payload.currentContent) : ''
+  );
+  const instructionDocs = await collectRepoInstructionDocs(activeVault, currentPath);
+
+  const systemPrompt = [
+    'You are Agno, a note-aware assistant inside a local-first knowledge base.',
+    'Answer using the provided vault context only. If the answer is uncertain, say so clearly.',
+    'Prefer concise, practical responses.',
+    'Cite note paths inline when making factual claims from notes.',
+    'When the user asks to create a note, article, doc, or markdown file, prefer using the available tools instead of only describing what to write.',
+    'Any created markdown must follow the repository instruction files if they are provided.',
+    'If multiple instruction files are provided, more specific files closer to the target path override broader root instructions.',
+    'After using a tool, briefly explain what you created and why.'
+  ].join(' ');
+
+  const contextSections = [];
+  if (context.currentNote) {
+    contextSections.push(
+      `Current note (${context.currentNote.path}):\nTitle: ${context.currentNote.title}\nTags: ${context.currentNote.tags.join(', ') || 'none'}\nOpen tasks: ${context.currentNote.tasks.map((task) => task.text).join(' | ') || 'none'}\nContent:\n${context.currentNote.body}`
+    );
+  }
+  if (context.relatedNotes.length) {
+    contextSections.push(
+      `Related notes:\n${context.relatedNotes.map((note) => (
+        `Path: ${note.path}\nTitle: ${note.title}\nExcerpt: ${note.excerpt}\nContent:\n${note.body}`
+      )).join('\n\n---\n\n')}`
+    );
+  }
+
+  const instructionSections = instructionDocs.length
+    ? [
+        `Repository instructions for note creation:\n${instructionDocs.map((doc) => (
+          `File: ${doc.path}\n${doc.content}`
+        )).join('\n\n====\n\n')}`
+      ]
+    : [];
+
+  const toolDefinitions = [
+    {
+      type: 'function',
+      function: {
+        name: 'create_note',
+        description: 'Create a new markdown note in the vault when the user asks for a note, article, document, or page to be created.',
+        parameters: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            title: {
+              type: 'string',
+              description: 'Human-readable note title.'
+            },
+            rel_path: {
+              type: 'string',
+              description: 'Optional vault-relative markdown path such as docs/Context and Cancellation.md.'
+            },
+            markdown: {
+              type: 'string',
+              description: 'Complete markdown for the new note, following any repository instruction files that were provided.'
+            },
+            rationale: {
+              type: 'string',
+              description: 'Short explanation of why this note should be created.'
+            }
+          },
+          required: ['title', 'markdown']
+        }
+      }
+    }
+  ];
+
+  const conversation = [
+    { role: 'system', content: systemPrompt },
+    ...(instructionSections.length ? instructionSections.map((content) => ({ role: 'system', content })) : []),
+    ...(contextSections.length ? [{ role: 'system', content: contextSections.join('\n\n====\n\n') }] : []),
+    ...messages
+  ];
+
+  const toolResults = [];
+  let content = '';
+  let completionCount = 0;
+
+  const runCompletion = async (toolChoice = 'auto', extraMessages = []) => {
+    completionCount += 1;
+    const completion = await openRouterRequest('/chat/completions', {
+      method: 'POST',
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        tools: toolDefinitions,
+        tool_choice: toolChoice,
+        messages: [...conversation, ...extraMessages]
+      })
+    });
+
+    const choice = completion?.choices?.[0];
+    const assistantMessage = choice?.message || {};
+    const toolCalls = Array.isArray(assistantMessage.tool_calls) ? assistantMessage.tool_calls : [];
+
+    if (!toolCalls.length) {
+      content = normalizeAssistantContent(assistantMessage.content);
+      return false;
+    }
+
+    conversation.push({
+      role: 'assistant',
+      content: normalizeAssistantContent(assistantMessage.content),
+      tool_calls: toolCalls
+    });
+
+    for (const toolCall of toolCalls) {
+      const result = await runAgentToolCall(activeVault, currentPath, toolCall);
+      toolResults.push(result);
+      conversation.push({
+        role: 'tool',
+        tool_call_id: toolCall.id,
+        content: JSON.stringify(result)
+      });
+    }
+    return true;
+  };
+
+  await runCompletion('auto');
+
+  if (wantsNoteCreation && toolResults.length === 0 && completionCount < 3) {
+    await runCompletion(
+      { type: 'function', function: { name: 'create_note' } },
+      [{
+        role: 'system',
+        content: 'The user explicitly asked you to create a note. Do not answer with manual instructions. Call create_note now.'
+      }]
+    );
+  }
+
+  if (wantsNoteCreation && toolResults.length === 0) {
+    const title = inferRequestedTitle(latestUser, content, currentPath);
+    const relPath = inferRequestedPath(latestUser, content, currentPath, title);
+    const markdown = buildFallbackNoteMarkdown({
+      title,
+      userText: latestUser,
+      assistantText: content,
+      currentPath
+    });
+    const fallbackResult = await createAgentNote(activeVault, currentPath, {
+      title,
+      rel_path: relPath,
+      markdown
+    });
+    toolResults.push(fallbackResult);
+    content = content
+      ? `${content}\n\nCreated ${fallbackResult.openedPath} in the vault.`
+      : `Created ${fallbackResult.openedPath} in the vault.`;
+  }
+
+  return {
+    ok: true,
+    content,
+    context,
+    createdNote: toolResults.find((result) => result.kind === 'create-note') || null,
+    toolResults
+  };
+});
+
+ipcMain.handle('agent:ask', async (_event, query, currentPath) => {
+  if (!activeVault) throw new Error('No active vault');
+  return answerVaultQuestion(activeVault, query, currentPath);
+});
+
+ipcMain.handle('agent:create-report', async (_event, kind) => {
+  if (!activeVault) throw new Error('No active vault');
+  const docs = await indexMarkdown(activeVault);
+  const analysis = await buildVaultAnalysis(activeVault, docs);
+  const dateStamp = new Date().toISOString().slice(0, 10);
+
+  let relPath = '';
+  let content = '';
+  if (kind === 'project-pulse') {
+    relPath = await ensureUniqueRelativePath(activeVault, `Agent Reports/${dateStamp} Project Pulse.md`);
+    content = buildProjectPulseMarkdown(analysis);
+  } else {
+    relPath = await ensureUniqueRelativePath(activeVault, `Agent Reports/${dateStamp} Vault Review.md`);
+    content = buildVaultReviewMarkdown(analysis);
+  }
+
+  const filePath = normalizePath(activeVault, relPath);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, content, 'utf8');
+  return {
+    ok: true,
+    message: `Created ${relPath}`,
+    openedPath: relPath,
+    updatedPaths: [relPath]
+  };
+});
+
+ipcMain.handle('agent:ingest-research', async (_event, payload) => {
+  if (!activeVault) throw new Error('No active vault');
+  const note = buildResearchNote(payload || {});
+  const relPath = await ensureUniqueRelativePath(activeVault, note.suggestedPath);
+  const filePath = normalizePath(activeVault, relPath);
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, note.markdown, 'utf8');
+  return {
+    ok: true,
+    message: `Captured research into ${relPath}`,
+    openedPath: relPath,
+    updatedPaths: [relPath]
+  };
+});
+
+ipcMain.handle('agent:apply-suggestion', async (_event, suggestion) => {
+  if (!activeVault) throw new Error('No active vault');
+  if (!suggestion || typeof suggestion !== 'object') throw new Error('Invalid suggestion.');
+
+  switch (suggestion.kind) {
+    case 'add-frontmatter': {
+      const relPath = suggestion.targetPath;
+      const filePath = normalizePath(activeVault, relPath);
+      const content = await fs.readFile(filePath, 'utf8');
+      const parsed = parseFrontmatter(content);
+      if (parsed.frontmatterRaw) {
+        return { ok: true, message: `${relPath} already has frontmatter.`, updatedPaths: [] };
+      }
+      const title = sanitizeFileName(path.basename(relPath, '.md')) || 'Untitled';
+      await fs.writeFile(filePath, `${buildFrontmatterTemplate(title)}${content}`, 'utf8');
+      return {
+        ok: true,
+        message: `Added frontmatter to ${relPath}`,
+        updatedPaths: [relPath]
+      };
+    }
+    case 'create-missing-note': {
+      const desiredPath = String(suggestion.suggestedPath || `${sanitizeFileName(suggestion.linkText) || 'Untitled'}.md`);
+      const relPath = await ensureUniqueRelativePath(activeVault, desiredPath);
+      const filePath = normalizePath(activeVault, relPath);
+      const title = sanitizeFileName(path.basename(relPath, '.md')) || 'Untitled';
+      const sourceLink = suggestion.sourcePath ? `\n\nLinked from [[${path.basename(suggestion.sourcePath, '.md')}]].\n` : '\n';
+      const scaffold = `${buildFrontmatterTemplate(title)}# ${title}\n\n## Summary\n\n## Next Steps${sourceLink}`;
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(filePath, scaffold, 'utf8');
+      return {
+        ok: true,
+        message: `Created ${relPath}`,
+        openedPath: relPath,
+        updatedPaths: [relPath]
+      };
+    }
+    case 'fix-broken-link': {
+      const sourcePath = suggestion.sourcePath;
+      const linkText = String(suggestion.linkText || '').trim();
+      const replacementTitle = String(suggestion.targetTitle || path.basename(String(suggestion.targetPath || ''), '.md')).trim();
+      if (!sourcePath || !linkText || !replacementTitle) {
+        throw new Error('Incomplete broken link suggestion.');
+      }
+
+      const filePath = normalizePath(activeVault, sourcePath);
+      const content = await fs.readFile(filePath, 'utf8');
+      const next = content.replaceAll(`[[${linkText}]]`, `[[${replacementTitle}]]`);
+      if (next === content) {
+        throw new Error(`No [[${linkText}]] links found in ${sourcePath}.`);
+      }
+      await fs.writeFile(filePath, next, 'utf8');
+      return {
+        ok: true,
+        message: `Updated wiki links in ${sourcePath}`,
+        updatedPaths: [sourcePath]
+      };
+    }
+    default:
+      throw new Error(`Unsupported suggestion type: ${suggestion.kind}`);
+  }
+});
+
+ipcMain.handle('ai:status', async () => {
+  const token = await getOpenRouterKey();
+  return { hasOpenRouterKey: Boolean(token) };
+});
+
+ipcMain.handle('ai:set-openrouter-key', async (_event, token) => {
+  const trimmed = String(token || '').trim();
+  if (!trimmed) throw new Error('OpenRouter key is required.');
+  const secrets = await readAISecrets();
+  secrets.openrouter = encryptSecret(trimmed);
+  await writeAISecrets(secrets);
+  return { ok: true };
+});
+
+ipcMain.handle('ai:clear-openrouter-key', async () => {
+  const secrets = await readAISecrets();
+  delete secrets.openrouter;
+  await writeAISecrets(secrets);
+  return { ok: true };
+});
+
+ipcMain.handle('ai:list-openrouter-models', async () => {
+  const data = await openRouterRequest('/models');
+  const models = Array.isArray(data?.data) ? data.data : [];
+  return models
+    .map((model) => ({
+      id: model.id,
+      name: model.name || model.id,
+      contextLength: model.context_length || 0,
+      promptPrice: model.pricing?.prompt || '',
+      completionPrice: model.pricing?.completion || ''
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 });
 
 ipcMain.handle('sync:config', async () => {

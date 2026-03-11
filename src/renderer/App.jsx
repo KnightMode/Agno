@@ -18,6 +18,7 @@ import Fuse from 'fuse.js';
 import DOMPurify from 'dompurify';
 import { diffLines } from 'diff';
 import {
+  Bot,
   Search,
   FolderOpen,
   FolderPlus,
@@ -43,6 +44,8 @@ import TerminalPane from './components/TerminalPane';
 import GraphView from './components/GraphView';
 import SettingsPanel from './components/SettingsPanel';
 import HistoryPanel from './components/HistoryPanel';
+import AgentPanel from './components/AgentPanel';
+import NoteChatPanel from './components/NoteChatPanel';
 import AgnoLogo from './components/AgnoLogo';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './components/ui/dialog';
 import { CommandDialog, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem, CommandSeparator } from './components/ui/command';
@@ -176,10 +179,11 @@ const CONTENT_WIDTH_MAX = 1400;
 const CONTENT_WIDTH_STEP = 10;
 const CONTENT_WIDTH_DEFAULT = 760;
 const CONTENT_WIDTH_KEY = 'ngobs.contentWidth';
+const CONTEXT_WIDTH_MIN = 260;
+const CONTEXT_WIDTH_MAX = 460;
+const CONTEXT_WIDTH_DEFAULT = 320;
 const CONTEXT_WIDTH_KEY = 'ngobs.contextWidth';
-const CONTEXT_WIDTH_DEFAULT = 280;
-const CONTEXT_WIDTH_MIN = 220;
-const CONTEXT_WIDTH_MAX = 520;
+const CONTEXT_HANDLE_WIDTH = 14;
 const TERMINAL_HEIGHT_KEY = 'ngobs.terminalHeight';
 const TERMINAL_HEIGHT_DEFAULT = 200;
 const TERMINAL_HEIGHT_MIN = 120;
@@ -197,6 +201,7 @@ const SETTINGS_DEFAULTS = {
   accentColor: '#0a84ff',
   contentWidth: CONTENT_WIDTH_DEFAULT,
   newNoteTitleFormat: 'timestamp',
+  openRouterModel: '',
   terminalPosition: 'bottom',
   theme: 'dark'
 };
@@ -537,6 +542,7 @@ function createPaletteActions() {
     { id: 'action:new', label: 'New Note', hint: 'Create a new note' },
     { id: 'action:new-folder', label: 'New Folder', hint: 'Create a folder in vault' },
     { id: 'action:save', label: 'Save Current Note', hint: 'Write changes to disk' },
+    { id: 'action:agent', label: 'Open Agent Workspace', hint: 'Analyze the vault and apply note maintenance' },
     { id: 'action:shrink-content', label: 'Shrink All Content', hint: 'Set content width to compact' },
     { id: 'action:vault', label: 'Open Vault', hint: 'Switch vault folder' },
     { id: 'action:terminal', label: 'Toggle Terminal', hint: 'Show or hide terminal' },
@@ -655,13 +661,15 @@ export default function App() {
   const [showPalette, setShowPalette] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
   const deferredPaletteQuery = useDeferredValue(paletteQuery);
-  const [paletteIndex, setPaletteIndex] = useState(0);
   const [showGraph, setShowGraph] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
   const [status, setStatus] = useState('Ready');
   const [lastSaved, setLastSaved] = useState(null);
   const [showContext, setShowContext] = useState(false);
+  const [contextTab, setContextTab] = useState('chat');
   const [showSidebar, setShowSidebar] = useState(true);
+  const [contextWidth, setContextWidth] = useState(loadContextWidth);
+  const [contextResizing, setContextResizing] = useState(false);
   const [treeMenu, setTreeMenu] = useState(null);
   const [openTabs, setOpenTabs] = useState([]);
   const [editingBlock, setEditingBlock] = useState(null);
@@ -669,6 +677,10 @@ export default function App() {
   const [treeCollapseSignal, setTreeCollapseSignal] = useState(0);
   const [settings, setSettings] = useState(loadSettings);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAgent, setShowAgent] = useState(false);
+  const [agentTab, setAgentTab] = useState('chat');
+  const [agentContextPath, setAgentContextPath] = useState('');
+  const [agentSessionKey, setAgentSessionKey] = useState(0);
   const [showDiff, setShowDiff] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showNoteFind, setShowNoteFind] = useState(false);
@@ -691,6 +703,10 @@ export default function App() {
   const [contextWidth, setContextWidth] = useState(() => loadPanelSize(CONTEXT_WIDTH_KEY, CONTEXT_WIDTH_DEFAULT, CONTEXT_WIDTH_MIN, CONTEXT_WIDTH_MAX));
   const [terminalHeight, setTerminalHeight] = useState(() => loadPanelSize(TERMINAL_HEIGHT_KEY, TERMINAL_HEIGHT_DEFAULT, TERMINAL_HEIGHT_MIN, TERMINAL_HEIGHT_MAX));
   const [terminalWidth, setTerminalWidth] = useState(() => loadPanelSize(TERMINAL_WIDTH_KEY, TERMINAL_WIDTH_DEFAULT, TERMINAL_WIDTH_MIN, TERMINAL_WIDTH_MAX));
+  const [aiConfig, setAIConfig] = useState({ hasOpenRouterKey: false });
+  const [aiModels, setAIModels] = useState([]);
+  const [aiModelsBusy, setAIModelsBusy] = useState(false);
+  const [aiStatus, setAIStatus] = useState('');
 
   const contentWidth = settings.contentWidth;
 
@@ -704,6 +720,7 @@ export default function App() {
   const tabbarRef = useRef(null);
   const tabCacheRef = useRef({});
   const splitLoadRef = useRef(0);
+  const showAgentRef = useRef(showAgent);
   const [tabOverflow, setTabOverflow] = useState({ left: false, right: false });
   const [contentWidthCeiling, setContentWidthCeiling] = useState(CONTENT_WIDTH_MAX);
 
@@ -711,6 +728,15 @@ export default function App() {
     () => applyInlineEditToContent(content, editingBlock, editingDraft),
     [content, editingBlock, editingDraft]
   );
+
+  useEffect(() => {
+    showAgentRef.current = showAgent;
+  }, [showAgent]);
+
+  useEffect(() => {
+    document.body.classList.toggle('context-resizing', contextResizing);
+    return () => document.body.classList.remove('context-resizing');
+  }, [contextResizing]);
   const isDirty = pendingInlineContent !== loadedContentRef.current;
 
   const refreshTree = async () => {
@@ -747,8 +773,53 @@ export default function App() {
     }
   }, []);
 
+  const refreshAIStatus = useCallback(async () => {
+    try {
+      const status = await window.ngobs.ai.status();
+      setAIConfig(status || { hasOpenRouterKey: false });
+      return status || { hasOpenRouterKey: false };
+    } catch {
+      const fallback = { hasOpenRouterKey: false };
+      setAIConfig(fallback);
+      return fallback;
+    }
+  }, []);
+
+  const refreshAIModels = useCallback(async () => {
+    setAIModelsBusy(true);
+    try {
+      const models = await window.ngobs.ai.listOpenRouterModels();
+      setAIModels(models || []);
+      if (!settings.openRouterModel && models?.[0]?.id) {
+        setSettings((prev) => {
+          const next = { ...prev, openRouterModel: models[0].id };
+          window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(next));
+          return next;
+        });
+      }
+      setAIStatus(models?.length ? `Loaded ${models.length} models.` : 'No models returned.');
+    } catch (error) {
+      setAIStatus(error?.message || 'Unable to load OpenRouter models.');
+      setAIModels([]);
+    } finally {
+      setAIModelsBusy(false);
+    }
+  }, [settings.openRouterModel]);
+
+  const openAgentWorkspace = useCallback((tab = 'overview', contextPath = '') => {
+    setAgentTab(tab);
+    setAgentContextPath(contextPath || currentPath || '');
+    setAgentSessionKey((value) => value + 1);
+    setShowAgent(true);
+  }, [currentPath]);
+
   const activatePath = async (path) => {
     if (!path) return;
+
+    const shouldCloseAgent = showAgentRef.current;
+    if (shouldCloseAgent) {
+      setShowAgent(false);
+    }
 
     if (currentPath) {
       tabCacheRef.current[currentPath] = {
@@ -771,11 +842,42 @@ export default function App() {
     setStatus(`Opened ${path}`);
     setEditingBlock(null);
     setEditingDraft('');
+    if (shouldCloseAgent) {
+      setAgentContextPath(path);
+    }
   };
 
   const loadPath = async (path) => {
     await activatePath(path);
   };
+
+  const startContextResize = useCallback((event) => {
+    if (!showContext || showAgent) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+
+    const startX = event.clientX;
+    const startWidth = contextWidth;
+    setContextResizing(true);
+
+    const onMove = (moveEvent) => {
+      const viewportMax = Math.max(CONTEXT_WIDTH_MIN, Math.min(CONTEXT_WIDTH_MAX, Math.floor(window.innerWidth * 0.42)));
+      const next = Math.max(
+        CONTEXT_WIDTH_MIN,
+        Math.min(viewportMax, startWidth - (moveEvent.clientX - startX))
+      );
+      setContextWidth(next);
+    };
+
+    const onUp = () => {
+      setContextResizing(false);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }, [showAgent, showContext, contextWidth]);
 
   const openVault = async () => {
     const next = await window.ngobs.vault.pick();
@@ -785,6 +887,8 @@ export default function App() {
     await refreshRecentVaults();
     await refreshSyncConfig();
     await refreshSyncStatus();
+    const ai = await refreshAIStatus();
+    if (ai?.hasOpenRouterKey) await refreshAIModels();
     const docs = await refreshDocs();
     const first = docs[0]?.path;
     if (first) loadPath(first);
@@ -800,6 +904,8 @@ export default function App() {
       await refreshRecentVaults();
       await refreshSyncConfig();
       await refreshSyncStatus();
+      const ai = await refreshAIStatus();
+      if (ai?.hasOpenRouterKey) await refreshAIModels();
       const docs = await refreshDocs();
       const first = docs[0]?.path;
       if (first) loadPath(first);
@@ -817,6 +923,8 @@ export default function App() {
       setTree(existing.tree);
       await refreshSyncConfig();
       await refreshSyncStatus();
+      const ai = await refreshAIStatus();
+      if (ai?.hasOpenRouterKey) await refreshAIModels();
       const docs = await refreshDocs();
       const first = docs[0]?.path;
       if (first) loadPath(first);
@@ -832,7 +940,7 @@ export default function App() {
     return () => {
       if (unsubRef.current) unsubRef.current();
     };
-  }, [refreshSyncConfig, refreshSyncStatus]);
+  }, [refreshAIModels, refreshAIStatus, refreshSyncConfig, refreshSyncStatus]);
 
   const runVaultSync = useCallback(async () => {
     setSyncBusy(true);
@@ -914,6 +1022,11 @@ export default function App() {
     return () => node.removeEventListener('click', handler);
   }, [allDocs]);
 
+  useEffect(() => {
+    if (!showSettings || !aiConfig.hasOpenRouterKey || aiModels.length > 0 || aiModelsBusy) return;
+    refreshAIModels();
+  }, [showSettings, aiConfig.hasOpenRouterKey, aiModels.length, aiModelsBusy, refreshAIModels]);
+
   const save = async () => {
     if (!currentPath) return;
     const contentToSave = pendingInlineContent;
@@ -948,6 +1061,37 @@ export default function App() {
       return next;
     });
   };
+
+  const saveOpenRouterKey = useCallback(async (token) => {
+    try {
+      await window.ngobs.ai.setOpenRouterKey(token);
+      setAIStatus('OpenRouter key saved securely.');
+      const status = await refreshAIStatus();
+      if (status?.hasOpenRouterKey) await refreshAIModels();
+      return true;
+    } catch (error) {
+      const message = error?.message || 'Unable to save OpenRouter key.';
+      setAIStatus(message);
+      setStatus(`AI setup failed: ${message}`);
+      return false;
+    }
+  }, [refreshAIModels, refreshAIStatus]);
+
+  const clearOpenRouterKey = useCallback(async () => {
+    try {
+      await window.ngobs.ai.clearOpenRouterKey();
+      setAIModels([]);
+      handleSettingsChange('openRouterModel', '');
+      setAIStatus('OpenRouter key removed.');
+      await refreshAIStatus();
+      return true;
+    } catch (error) {
+      const message = error?.message || 'Unable to clear OpenRouter key.';
+      setAIStatus(message);
+      setStatus(`AI setup failed: ${message}`);
+      return false;
+    }
+  }, [refreshAIStatus]);
 
   // Apply accent color to CSS custom properties
   useEffect(() => {
@@ -996,10 +1140,6 @@ export default function App() {
   }, [settings.editorFontSize, settings.editorLineHeight, settings.editorFontFamily]);
 
   useEffect(() => {
-    setPaletteIndex(0);
-  }, [deferredPaletteQuery, showPalette]);
-
-  useEffect(() => {
     const previewEl = previewRef.current;
     if (!previewEl) {
       setContentWidthCeiling(CONTENT_WIDTH_MAX);
@@ -1032,7 +1172,7 @@ export default function App() {
       if (ro) ro.disconnect();
       else window.removeEventListener('resize', updateCeiling);
     };
-  }, [currentPath, showContext, showSidebar, showTerminal]);
+  }, [currentPath, showAgent, showContext, showSidebar, showTerminal]);
 
   useEffect(() => {
     if (!showNoteFind) return;
@@ -1446,6 +1586,23 @@ export default function App() {
     await window.ngobs.file.reveal(path);
   };
 
+  const handleAgentMutation = async (result) => {
+    await refreshTree();
+    await refreshDocs();
+    await refreshSyncConfig();
+    await refreshSyncStatus();
+
+    if (result?.openedPath) {
+      await activatePath(result.openedPath);
+    } else if (currentPath && result?.updatedPaths?.includes(currentPath) && !isDirty) {
+      await activatePath(currentPath);
+    }
+
+    if (result?.message) {
+      setStatus(result.message);
+    }
+  };
+
   const openSplitFromTab = useCallback((path, side) => {
     if (!path) return;
     setSplitView({ path, side: side === 'left' ? 'left' : 'right' });
@@ -1539,6 +1696,9 @@ export default function App() {
         break;
       case 'action:save':
         await save();
+        break;
+      case 'action:agent':
+        openAgentWorkspace('overview', currentPath);
         break;
       case 'action:shrink-content':
         collapseAllTree();
@@ -1812,7 +1972,13 @@ export default function App() {
   ) : null;
 
   return (
-    <div className={`app-shell ${showSidebar ? '' : 'sidebar-hidden'}`}>
+    <div
+      className={`app-shell ${showSidebar ? '' : 'sidebar-hidden'}`}
+      style={{
+        '--context-width': `${contextWidth}px`,
+        '--context-handle-width': `${CONTEXT_HANDLE_WIDTH}px`
+      }}
+    >
       <aside className="left-panel">
         <div className="window-chrome">
           <div className="window-shortcuts">
@@ -1824,6 +1990,9 @@ export default function App() {
             </Button>
             <Button variant="ghost" size="icon" className="quick-icon-btn" onClick={() => setShowGraph(true)} title="Graph view">
               <Network size={14} />
+            </Button>
+            <Button variant="ghost" size="icon" className="quick-icon-btn" onClick={() => openAgentWorkspace(currentPath ? 'chat' : 'overview', currentPath)} title="Agent workspace">
+              <Bot size={14} />
             </Button>
             <Button variant="ghost" size="icon" className="quick-icon-btn" onClick={() => setShowSettings(true)} title="Settings">
               <Settings size={14} />
@@ -2015,6 +2184,18 @@ export default function App() {
               <Button variant="ghost" size="icon" className="icon-btn" onClick={() => currentPath && setShowHistory(true)} title="Version history">
                 <Clock size={14} />
               </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="icon-btn"
+                onClick={() => {
+                  setShowContext(true);
+                  setContextTab('chat');
+                }}
+                title={currentPath ? 'Ask about this note' : 'Open note chat'}
+              >
+                <Bot size={14} />
+              </Button>
               <Button variant="ghost" size="icon" className="icon-btn" onClick={() => setShowContext((v) => !v)} title="Toggle links panel">
                 {showContext ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
               </Button>
@@ -2025,12 +2206,35 @@ export default function App() {
           </div>
         </div>
 
-        <div className={`content-grid ${showContext ? '' : 'context-hidden'} ${(terminalOnRight && showTerminal) ? 'terminal-right' : ''}`}>
-          <div className={`editor-split ${splitView ? `split-open split-${splitView.side}` : ''}`}>
-            {splitView?.side === 'left' && splitPaneNode}
+        <div className={`content-grid ${(showContext && !showAgent) ? '' : 'context-hidden'} ${(terminalOnRight && showTerminal) ? 'terminal-right' : ''}`}>
+          <div className={`editor-split ${(!showAgent && splitView) ? `split-open split-${splitView.side}` : ''}`}>
+            {!showAgent && splitView?.side === 'left' && splitPaneNode}
 
             <section className="single-pane main-pane">
-            {currentPath ? (
+            {showAgent ? (
+              <AgentPanel
+                sessionKey={agentSessionKey}
+                initialTab={agentTab}
+                currentPath={currentPath}
+                currentContent={pendingInlineContent}
+                contextPath={agentContextPath || currentPath}
+                model={settings.openRouterModel}
+                hasOpenRouterKey={aiConfig.hasOpenRouterKey}
+                isDirty={isDirty}
+                onNavigate={async (path) => {
+                  await loadPath(path);
+                  setShowAgent(false);
+                }}
+                onOpenNoteChat={(path) => {
+                  setAgentContextPath(path);
+                  setAgentTab('chat');
+                  setAgentSessionKey((value) => value + 1);
+                  setShowAgent(true);
+                }}
+                onAfterMutation={handleAgentMutation}
+                onBack={() => setShowAgent(false)}
+              />
+            ) : currentPath ? (
               <article className="preview-pane" ref={previewRef}>
                 <div className="prose-wrapper" style={{ maxWidth: `${effectiveContentWidth}px` }}>
                   {(() => {
@@ -2120,55 +2324,86 @@ export default function App() {
             )}
             </section>
 
-            {splitView?.side !== 'left' && splitPaneNode}
+            {!showAgent && splitView?.side !== 'left' && splitPaneNode}
           </div>
 
-          {showContext && (
-            <aside className="context-pane">
-              <div
-                className="pane-resize-handle vertical pane-resize-handle-inset-left"
-                onMouseDown={(event) => beginResizeDrag('context', event)}
-                title="Resize side pane"
-              />
-              <section className="context-section">
-                <h4>Backlinks</h4>
-                {backlinks.length ? (
-                  <div className="context-list">
-                    {backlinks.map((link) => (
-                      <button key={link} onClick={() => loadPath(link)}>
-                        <span className="context-link-title">{link.replace(/\.md$/, '').split('/').pop()}</span>
-                        <span className="context-link-path">{link}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="context-empty">No backlinks</p>
-                )}
-              </section>
+          {showContext && !showAgent && (
+            <div
+              className="context-resize-handle"
+              onPointerDown={startContextResize}
+              onDoubleClick={() => setContextWidth(CONTEXT_WIDTH_DEFAULT)}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize context sidebar"
+              title="Drag to resize context sidebar"
+            />
+          )}
 
-              <section className="context-section">
-                <h4>Outgoing Links</h4>
-                {extractedLinks.length ? (
-                  <div className="context-tags">
-                    {extractedLinks.map((link) => {
-                      const targetPath = resolveWikiPath(link);
-                      const displayName = link.split('/').pop() || link;
-                      return (
-                        <button
-                          key={link}
-                          className={targetPath ? '' : 'disabled'}
-                          onClick={() => targetPath && loadPath(targetPath)}
-                          title={targetPath || 'No matching note'}
-                        >
-                          {displayName}
-                        </button>
-                      );
-                    })}
-                  </div>
+          {showContext && !showAgent && (
+            <aside className="context-pane">
+              <div className="context-tabs">
+                <button className={contextTab === 'links' ? 'active' : ''} onClick={() => setContextTab('links')}>
+                  Links
+                </button>
+                <button className={contextTab === 'chat' ? 'active' : ''} onClick={() => setContextTab('chat')}>
+                  Chat
+                </button>
+              </div>
+
+              <div className="context-body">
+                {contextTab === 'links' ? (
+                  <>
+                    <section className="context-section">
+                      <h4>Backlinks</h4>
+                      {backlinks.length ? (
+                        <div className="context-list">
+                          {backlinks.map((link) => (
+                            <button key={link} onClick={() => loadPath(link)}>
+                              <span className="context-link-title">{link.replace(/\.md$/, '').split('/').pop()}</span>
+                              <span className="context-link-path">{link}</span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="context-empty">No backlinks</p>
+                      )}
+                    </section>
+
+                    <section className="context-section">
+                      <h4>Outgoing Links</h4>
+                      {extractedLinks.length ? (
+                        <div className="context-tags">
+                          {extractedLinks.map((link) => {
+                            const targetPath = resolveWikiPath(link);
+                            const displayName = link.split('/').pop() || link;
+                            return (
+                              <button
+                                key={link}
+                                className={targetPath ? '' : 'disabled'}
+                                onClick={() => targetPath && loadPath(targetPath)}
+                                title={targetPath || 'No matching note'}
+                              >
+                                {displayName}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="context-empty">No wikilinks</p>
+                      )}
+                    </section>
+                  </>
                 ) : (
-                  <p className="context-empty">No wikilinks</p>
+                  <NoteChatPanel
+                    key={currentPath || 'note-chat'}
+                    currentPath={currentPath}
+                    currentContent={pendingInlineContent}
+                    model={settings.openRouterModel}
+                    hasOpenRouterKey={aiConfig.hasOpenRouterKey}
+                    onOpenPath={loadPath}
+                  />
                 )}
-              </section>
+              </div>
             </aside>
           )}
 
@@ -2299,6 +2534,13 @@ export default function App() {
       {showSettings && <SettingsPanel
         settings={settings}
         onSettingsChange={handleSettingsChange}
+        aiConfig={aiConfig}
+        aiModels={aiModels}
+        aiModelsBusy={aiModelsBusy}
+        aiStatus={aiStatus}
+        onAIRefreshModels={refreshAIModels}
+        onAISaveKey={saveOpenRouterKey}
+        onAIClearKey={clearOpenRouterKey}
         syncConfig={syncConfig}
         syncBusy={syncBusy}
         syncStatus={syncStatus}

@@ -31,6 +31,20 @@ contextBridge.exposeInMainWorld('ngobs', {
   graph: {
     data: () => ipcRenderer.invoke('graph:data')
   },
+  agent: {
+    overview: () => ipcRenderer.invoke('agent:overview'),
+    ask: (query, currentPath) => ipcRenderer.invoke('agent:ask', query, currentPath),
+    chat: (payload) => ipcRenderer.invoke('agent:chat', payload),
+    createReport: (kind) => ipcRenderer.invoke('agent:create-report', kind),
+    ingestResearch: (payload) => ipcRenderer.invoke('agent:ingest-research', payload),
+    applySuggestion: (suggestion) => ipcRenderer.invoke('agent:apply-suggestion', suggestion)
+  },
+  ai: {
+    status: () => ipcRenderer.invoke('ai:status'),
+    setOpenRouterKey: (token) => ipcRenderer.invoke('ai:set-openrouter-key', token),
+    clearOpenRouterKey: () => ipcRenderer.invoke('ai:clear-openrouter-key'),
+    listOpenRouterModels: () => ipcRenderer.invoke('ai:list-openrouter-models')
+  },
   history: {
     save: (relPath, content) => ipcRenderer.invoke('history:save', relPath, content),
     list: (relPath) => ipcRenderer.invoke('history:list', relPath),

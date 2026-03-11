@@ -80,6 +80,13 @@ function SettingRow({ label, description, children }) {
 export default function SettingsPanel({
   settings,
   onSettingsChange,
+  aiConfig,
+  aiModels,
+  aiModelsBusy,
+  aiStatus,
+  onAIRefreshModels,
+  onAISaveKey,
+  onAIClearKey,
   syncConfig,
   syncBusy,
   syncStatus,
@@ -99,6 +106,8 @@ export default function SettingsPanel({
   const [setupBusy, setSetupBusy] = useState(false);
   const [setupError, setSetupError] = useState('');
   const [remoteMode, setRemoteMode] = useState('create');
+  const [openRouterKeyDraft, setOpenRouterKeyDraft] = useState('');
+  const [aiKeyBusy, setAIKeyBusy] = useState(false);
 
   const [appVersion, setAppVersion] = useState('');
   const [updateStatus, setUpdateStatus] = useState(null); // { state, version?, percent?, message? }
@@ -139,6 +148,7 @@ export default function SettingsPanel({
           <TabsList className="settings-nav">
             <TabsTrigger value="editor">Editor</TabsTrigger>
             <TabsTrigger value="appearance">Appearance</TabsTrigger>
+            <TabsTrigger value="ai">AI</TabsTrigger>
             <TabsTrigger value="general">General</TabsTrigger>
             <TabsTrigger value="about">About</TabsTrigger>
           </TabsList>
@@ -228,6 +238,96 @@ export default function SettingsPanel({
                     onChange={(e) => onSettingsChange('contentWidth', Number(e.target.value))}
                   />
                   <span className="range-value">{settings.contentWidth}px</span>
+                </div>
+              </SettingRow>
+            </TabsContent>
+
+            <TabsContent value="ai">
+              <SettingRow
+                label="OpenRouter API Key"
+                description={aiConfig?.hasOpenRouterKey ? 'Saved securely in system storage.' : 'Required for live agent chat and note follow-ups.'}
+              >
+                <div className="setting-stacked">
+                  <Input
+                    className="setting-input"
+                    type="password"
+                    autoComplete="off"
+                    placeholder={aiConfig?.hasOpenRouterKey ? 'Key saved. Enter a new one to rotate.' : 'sk-or-...'}
+                    value={openRouterKeyDraft}
+                    onChange={(e) => setOpenRouterKeyDraft(e.target.value)}
+                    disabled={aiKeyBusy}
+                  />
+                  <div className="setting-inline-actions">
+                    <Button
+                      size="sm"
+                      disabled={aiKeyBusy || !openRouterKeyDraft.trim()}
+                      onClick={async () => {
+                        try {
+                          setAIKeyBusy(true);
+                          await onAISaveKey(openRouterKeyDraft.trim());
+                          setOpenRouterKeyDraft('');
+                        } finally {
+                          setAIKeyBusy(false);
+                        }
+                      }}
+                    >
+                      Save Key
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={aiKeyBusy || !aiConfig?.hasOpenRouterKey}
+                      onClick={async () => {
+                        try {
+                          setAIKeyBusy(true);
+                          await onAIClearKey();
+                          setOpenRouterKeyDraft('');
+                        } finally {
+                          setAIKeyBusy(false);
+                        }
+                      }}
+                    >
+                      Clear Key
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={aiModelsBusy || !aiConfig?.hasOpenRouterKey}
+                      onClick={() => onAIRefreshModels()}
+                    >
+                      {aiModelsBusy ? 'Refreshing...' : 'Refresh Models'}
+                    </Button>
+                  </div>
+                  {aiStatus ? <div className="setting-status-text">{aiStatus}</div> : null}
+                </div>
+              </SettingRow>
+
+              <SettingRow
+                label="Agent Model"
+                description="The model used for note follow-ups and free-form agent chat."
+              >
+                <div className="setting-stacked">
+                  <Select
+                    value={settings.openRouterModel}
+                    onValueChange={(value) => onSettingsChange('openRouterModel', value)}
+                    disabled={!aiModels.length}
+                  >
+                    <SelectTrigger className="setting-select">
+                      <SelectValue placeholder={aiModelsBusy ? 'Loading models...' : 'Select a model'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {aiModels.map((model) => (
+                        <SelectItem key={model.id} value={model.id}>
+                          {model.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {!aiModels.length ? (
+                    <div className="setting-status-text">
+                      {aiConfig?.hasOpenRouterKey ? 'Save a key and refresh models to populate this list.' : 'Add an OpenRouter key first.'}
+                    </div>
+                  ) : null}
                 </div>
               </SettingRow>
             </TabsContent>
