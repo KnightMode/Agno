@@ -668,7 +668,6 @@ export default function App() {
   const [showContext, setShowContext] = useState(false);
   const [contextTab, setContextTab] = useState('chat');
   const [showSidebar, setShowSidebar] = useState(true);
-  const [contextWidth, setContextWidth] = useState(loadContextWidth);
   const [contextResizing, setContextResizing] = useState(false);
   const [treeMenu, setTreeMenu] = useState(null);
   const [openTabs, setOpenTabs] = useState([]);
