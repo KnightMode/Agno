@@ -5,9 +5,8 @@
 <h1 align="center">Agno</h1>
 
 <p align="center">
-  <strong>A free, open-source cross-platform desktop knowledge base.</strong><br>
-  Your notes live as plain markdown files on your machine — not on someone else's server.<br>
-  Sync to GitHub for free. No subscriptions. No cloud lock-in. You own your data.
+  <strong>A free, open-source, local-first markdown knowledge base with an integrated AI workspace.</strong><br>
+  Your notes stay as plain markdown files on your machine. Agno adds grounded vault analysis, note-aware AI follow-ups, free GitHub sync, and a built-in terminal without locking your data into a cloud service.
 </p>
 
 <p align="center">
@@ -18,31 +17,61 @@
 
 ## Why Agno?
 
-Most knowledge apps charge you monthly just to sync your own notes across devices. Agno takes a different approach — your vault is a folder of markdown files, and syncing happens through GitHub, a tool you already use. No proprietary format, no vendor lock-in, no recurring fees.
+Agno is for people who want the control of local markdown files without giving up modern AI workflows. The vault stays readable and portable. The app layers search, structure, Git-based sync, and note-aware AI on top.
+
+### The USP
+
+- Local-first by default. Your vault is a normal folder of markdown files, not a proprietary database.
+- AI that works on your vault, not around it. Agno analyzes note structure, surfaces stale or broken areas, generates reports, and answers with note-aware context.
+- Optional live model, not mandatory SaaS. Bring your own OpenRouter key for chat and follow-ups; the rest of the app still works as a normal local knowledge base.
+- Free sync through GitHub. No sync subscription, no cloud lock-in, and built-in version history.
+- Terminal built in. Notes, AI workflows, Git, and shell work happen in one desktop app.
+
+## What's New in AI
+
+Agno now includes an integrated **Agent Workspace** built around real vault operations instead of generic chat.
+
+- **Vault health overview**: Analyze note count, broken links, orphan notes, stale notes, untagged notes, and open tasks.
+- **Suggested actions**: Fix broken wiki links, create missing notes, and add frontmatter scaffolds with one click.
+- **Grounded vault search**: Ask questions against local note content and get linked note matches back.
+- **Ask This Note**: Open note-specific chat that uses the visible note plus related vault context.
+- **Report generation**: Create a Vault Review or Project Pulse note directly inside the vault.
+- **Research ingest**: Paste article text, transcripts, or meeting notes and turn them into a structured research note.
+- **Bring-your-own model**: Connect any OpenRouter model in Settings for live agent chat and note follow-ups.
+
+## Core Features
+
+### Agent Workspace
+
+Open the Agent Workspace to review vault health, search across the vault, chat with note context, generate reports, and apply maintenance actions without leaving the app.
+
+### Ask This Note
+
+Each note can open its own chat thread for summaries, critique, missing links, or turning rough notes into next actions. Responses are grounded in the current note and nearby vault context.
 
 ### Built-in Terminal
 
-Run your shell without leaving the app. `Cmd+`` ` `` opens a full terminal pane powered by xterm.js — run scripts, commit code, manage your system, all alongside your notes. Position it at the bottom or right side of the window.
+Run your shell without leaving the app. ``Cmd+` `` opens a full terminal pane powered by xterm.js so you can run scripts, commit code, and manage your system alongside your notes.
 
 ### Free Sync via GitHub
 
-One-click sync to any GitHub repo using a personal access token. No OAuth, no third-party services, no $8-10/month sync subscription. Your notes are version-controlled by default.
+One-click sync to any GitHub repo using a personal access token. No OAuth, no third-party sync service, and no monthly sync fee. Your notes are version-controlled by default.
 
 ### Knowledge Graph
 
-See how your ideas connect. An interactive force-directed graph is built automatically from your `[[wiki links]]`, letting you explore relationships between notes visually. Pin nodes, collapse branches, and click to navigate.
+See how your ideas connect. An interactive force-directed graph is built automatically from your `[[wiki links]]`, letting you explore relationships between notes visually.
 
 ### Inline Markdown Editor
 
-Click any block to edit it in place. Markdown renders live with syntax highlighting for 14+ languages. No mode switching, no separate preview pane — just write.
+Click any block to edit it in place. Markdown renders live with syntax highlighting for 14+ languages. No mode switching and no separate preview pane.
 
-### Wiki Links & Backlinks
+### Wiki Links, Backlinks, and Structure
 
-Link notes with `[[Note Name]]` syntax. A backlinks panel shows every note that references the current one, and an outgoing links panel shows what it links to — building a personal wiki naturally as you write.
+Link notes with `[[Note Name]]` syntax. Backlinks and outgoing links are surfaced automatically, making it easier to build a navigable personal wiki and keep the graph healthy.
 
 ### Version History
 
-Every save is tracked. Browse previous versions of any note and see exactly what changed with a visual diff view. Restore any version with one click.
+Every save is tracked. Browse previous versions of any note, inspect a visual diff, and restore an earlier version with one click.
 
 ### Fast Search
 
@@ -50,11 +79,17 @@ Vault-wide fuzzy search (`Cmd+K` / `Cmd+P`) across titles, paths, and content. I
 
 ### Tabs & Split View
 
-Work with multiple notes in tabs — pin them, reorder them, or split into side-by-side view for reference while editing.
+Work with multiple notes in tabs. Pin them, reorder them, or split them side by side for reference while editing.
 
 ### Fully Customizable
 
-Three themes (dark, light, warm), seven accent colors, 13 font families, adjustable font size, line height, and content width. Make it yours.
+Three themes (dark, light, warm), seven accent colors, 13 font families, adjustable font size, line height, and content width.
+
+## How AI Works
+
+- Vault analysis, link checking, report generation, and note scaffolding run against your local markdown vault.
+- Live chat and note follow-ups are optional and use a model you choose through OpenRouter.
+- Agno is designed to keep answers grounded in note context and to create markdown notes inside your vault when needed.
 
 ---
 
@@ -69,7 +104,7 @@ Three themes (dark, light, warm), seven accent colors, 13 font families, adjusta
 | `Cmd+F` | Find in note |
 | `Cmd+,` | Settings |
 | `Cmd+\` | Toggle sidebar |
-| `Cmd+`` ` `` | Toggle terminal |
+| ``Cmd+` `` | Toggle terminal |
 | `Cmd+Enter` / `Esc` | Commit inline edit |
 
 ## Install
@@ -105,6 +140,7 @@ Produces platform-specific artifacts in `dist/` (including macOS `.dmg` and Wind
 - Fuse.js (fuzzy search)
 - xterm.js + node-pty (terminal)
 - ForceGraph2D (knowledge graph)
+- OpenRouter integration (optional live AI chat)
 - Radix UI + Tailwind CSS (UI components)
 
 ## License
