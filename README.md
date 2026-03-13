@@ -16,15 +16,15 @@
 <table>
   <tr>
     <td align="center" width="62%">
-      <a href="build/hero.png">
-        <img src="build/hero.png" alt="Agno main workspace showing notes, graph, and terminal" width="100%">
+      <a href="build/hero-main-workspace.png">
+        <img src="build/hero-main-workspace.png" alt="Agno main workspace showing notes, graph, and terminal" width="100%">
       </a>
       <br>
       <sub><strong>Main Workspace</strong><br>Write, browse your graph, manage tabs, and work in the terminal without leaving the vault.</sub>
     </td>
     <td align="center" width="38%">
-      <a href="build/agent-workspace.png">
-        <img src="build/agent-workspace.png" alt="Agno Agent Workspace showing vault analysis and AI tools" width="100%">
+      <a href="build/agent-workspace-showcase.png">
+        <img src="build/agent-workspace-showcase.png" alt="Agno Agent Workspace showing vault analysis and AI tools" width="100%">
       </a>
       <br>
       <sub><strong>Agent Workspace</strong><br>Review vault health, run grounded search, chat with note context, and turn research into structured notes.</sub>
