@@ -1,5 +1,6 @@
 const { app, BrowserWindow, dialog, ipcMain, Menu, shell, nativeImage, safeStorage } = require('electron');
 const path = require('path');
+const fsSync = require('fs');
 const fs = require('fs/promises');
 const { execFile } = require('child_process');
 const chokidar = require('chokidar');
@@ -60,6 +61,58 @@ function setDockIcon() {
 
 function recentVaultsPath() {
   return path.join(app.getPath('userData'), 'recent-vaults.json');
+}
+
+function resolveTerminalShell() {
+  const candidates = [
+    process.env.SHELL,
+    '/bin/zsh',
+    '/bin/bash',
+    '/bin/sh'
+  ].filter(Boolean);
+
+  for (const candidate of candidates) {
+    if (!path.isAbsolute(candidate)) continue;
+    try {
+      if (fsSync.existsSync(candidate)) return candidate;
+    } catch {
+      // Try next shell candidate
+    }
+  }
+
+  return '/bin/sh';
+}
+
+function buildTerminalEnv() {
+  return {
+    ...process.env,
+    TERM: 'xterm-256color',
+    PATH: process.env.PATH || '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin'
+  };
+}
+
+function ensureNodePtyHelperExecutable() {
+  const appPath = app.getAppPath()
+    .replace('app.asar', 'app.asar.unpacked')
+    .replace('node_modules.asar', 'node_modules.asar.unpacked');
+  const helperPath = path.join(
+    appPath,
+    'node_modules',
+    'node-pty',
+    'prebuilds',
+    `${process.platform}-${process.arch}`,
+    'spawn-helper'
+  );
+
+  try {
+    if (!fsSync.existsSync(helperPath)) return;
+    const stats = fsSync.statSync(helperPath);
+    if ((stats.mode & 0o111) !== 0o111) {
+      fsSync.chmodSync(helperPath, 0o755);
+    }
+  } catch (error) {
+    log.warn('terminal:helper chmod failed', helperPath, error);
+  }
 }
 
 async function loadRecentVaults() {
@@ -1437,13 +1490,14 @@ ipcMain.handle('terminal:create', async (_event, id, cols = 120, rows = 34) => {
   if (terminals.has(id)) return true;
 
   try {
-    const shell = process.env.SHELL || '/bin/zsh';
+    ensureNodePtyHelperExecutable();
+    const shell = resolveTerminalShell();
     const ptyProc = pty.spawn(shell, ['-l'], {
       name: 'xterm-256color',
       cols,
       rows,
       cwd: activeVault || app.getPath('home'),
-      env: process.env
+      env: buildTerminalEnv()
     });
 
     ptyProc.onData((data) => {
