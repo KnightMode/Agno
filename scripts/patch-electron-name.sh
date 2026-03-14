@@ -6,3 +6,12 @@ if [ -f "$PLIST" ]; then
   plutil -replace CFBundleDisplayName -string "Agno" "$PLIST"
   plutil -replace CFBundleSpokenName -string "Agno" "$PLIST"
 fi
+
+for HELPER in \
+  "node_modules/node-pty/prebuilds/darwin-arm64/spawn-helper" \
+  "node_modules/node-pty/prebuilds/darwin-x64/spawn-helper"
+do
+  if [ -f "$HELPER" ]; then
+    chmod 755 "$HELPER"
+  fi
+done

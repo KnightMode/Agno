@@ -192,6 +192,7 @@ const TERMINAL_WIDTH_KEY = 'ngobs.terminalWidth';
 const TERMINAL_WIDTH_DEFAULT = 360;
 const TERMINAL_WIDTH_MIN = 260;
 const TERMINAL_WIDTH_MAX = 760;
+const TERMINAL_TAB_ID = '__terminal__';
 
 const SETTINGS_DEFAULTS = {
   editorFontSize: 15,
@@ -671,6 +672,7 @@ export default function App() {
   const [contextResizing, setContextResizing] = useState(false);
   const [treeMenu, setTreeMenu] = useState(null);
   const [openTabs, setOpenTabs] = useState([]);
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState('');
   const [editingBlock, setEditingBlock] = useState(null);
   const [editingDraft, setEditingDraft] = useState('');
   const [treeCollapseSignal, setTreeCollapseSignal] = useState(0);
@@ -722,6 +724,7 @@ export default function App() {
   const showAgentRef = useRef(showAgent);
   const [tabOverflow, setTabOverflow] = useState({ left: false, right: false });
   const [contentWidthCeiling, setContentWidthCeiling] = useState(CONTENT_WIDTH_MAX);
+  const terminalPinned = pinnedTabs.has(TERMINAL_TAB_ID);
 
   const pendingInlineContent = useMemo(
     () => applyInlineEditToContent(content, editingBlock, editingDraft),
@@ -812,6 +815,30 @@ export default function App() {
     setShowAgent(true);
   }, [currentPath]);
 
+  const ensureTerminalTab = useCallback(() => {
+    setOpenTabs((prev) => (prev.includes(TERMINAL_TAB_ID) ? prev : [...prev, TERMINAL_TAB_ID]));
+  }, []);
+
+  const hideTerminalTab = useCallback(() => {
+    setOpenTabs((prev) => prev.filter((tabPath) => tabPath !== TERMINAL_TAB_ID));
+  }, []);
+
+  const toggleTerminal = useCallback(() => {
+    if (showTerminal && activeWorkspaceTab === TERMINAL_TAB_ID) {
+      setShowTerminal(false);
+      if (!terminalPinned) hideTerminalTab();
+      setActiveWorkspaceTab(currentPath || openTabs.find((tabPath) => tabPath !== TERMINAL_TAB_ID) || '');
+      setStatus('Closed terminal');
+      return;
+    }
+
+    ensureTerminalTab();
+    setShowTerminal(true);
+    setActiveWorkspaceTab(TERMINAL_TAB_ID);
+    setShowAgent(false);
+    setStatus('Opened terminal');
+  }, [activeWorkspaceTab, currentPath, ensureTerminalTab, hideTerminalTab, openTabs, showTerminal, terminalPinned]);
+
   const activatePath = async (path) => {
     if (!path) return;
 
@@ -837,6 +864,8 @@ export default function App() {
     loadedContentRef.current = cached.loadedContent;
     setCurrentPath(path);
     setContent(cached.content);
+    setShowTerminal(false);
+    setActiveWorkspaceTab(path);
     setOpenTabs((prev) => (prev.includes(path) ? prev : [...prev, path]));
     setStatus(`Opened ${path}`);
     setEditingBlock(null);
@@ -849,6 +878,28 @@ export default function App() {
   const loadPath = async (path) => {
     await activatePath(path);
   };
+
+  const activateWorkspaceTab = async (path) => {
+    if (path === TERMINAL_TAB_ID) {
+      ensureTerminalTab();
+      setShowTerminal(true);
+      setShowAgent(false);
+      setActiveWorkspaceTab(path);
+      setStatus('Opened terminal');
+      return;
+    }
+
+    await activatePath(path);
+  };
+
+  useEffect(() => {
+    if (showTerminal || terminalPinned) {
+      ensureTerminalTab();
+      return;
+    }
+
+    hideTerminalTab();
+  }, [ensureTerminalTab, hideTerminalTab, showTerminal, terminalPinned]);
 
   const startContextResize = useCallback((event) => {
     if (!showContext || showAgent) return;
@@ -998,11 +1049,11 @@ export default function App() {
       window.ngobs.menu.on('menu:save', () => save()),
       window.ngobs.menu.on('menu:settings', () => setShowSettings(true)),
       window.ngobs.menu.on('menu:toggle-sidebar', () => setShowSidebar((v) => !v)),
-      window.ngobs.menu.on('menu:toggle-terminal', () => setShowTerminal((v) => !v)),
+      window.ngobs.menu.on('menu:toggle-terminal', () => toggleTerminal()),
       window.ngobs.menu.on('menu:toggle-links', () => setShowContext((v) => !v))
     ];
     return () => unsubs.forEach((fn) => fn());
-  }, []);
+  }, [toggleTerminal]);
 
   useEffect(() => {
     const handler = (event) => {
@@ -1375,6 +1426,16 @@ export default function App() {
 
   const closeTab = async (path) => {
     if (pinnedTabs.has(path)) return;
+    if (path === TERMINAL_TAB_ID) {
+      setShowTerminal(false);
+      hideTerminalTab();
+      if (activeWorkspaceTab === TERMINAL_TAB_ID) {
+        setActiveWorkspaceTab(currentPath || openTabs.find((tabPath) => tabPath !== TERMINAL_TAB_ID) || '');
+      }
+      setStatus('Closed terminal tab');
+      return;
+    }
+
     const index = openTabs.indexOf(path);
     if (index < 0) return;
 
@@ -1382,17 +1443,36 @@ export default function App() {
     setOpenTabs(remainingTabs);
     delete tabCacheRef.current[path];
 
-    if (currentPath !== path) return;
+    if (currentPath === path && activeWorkspaceTab !== path) {
+      const fallbackPath = remainingTabs.find((tabPath) => tabPath !== TERMINAL_TAB_ID) || '';
+      if (!fallbackPath) {
+        loadedContentRef.current = '';
+        setCurrentPath('');
+        setContent('');
+      } else {
+        const fallbackCache = tabCacheRef.current[fallbackPath];
+        loadedContentRef.current = fallbackCache?.loadedContent || '';
+        setCurrentPath(fallbackPath);
+        setContent(fallbackCache?.content || '');
+      }
+      return;
+    }
+
+    if (activeWorkspaceTab !== path) return;
 
     if (remainingTabs.length > 0) {
-      const nextPath = remainingTabs[Math.max(0, index - 1)] || remainingTabs[0];
-      await activatePath(nextPath);
+      const nonTerminalTabs = remainingTabs.filter((tabPath) => tabPath !== TERMINAL_TAB_ID);
+      const nextPath =
+        nonTerminalTabs[Math.max(0, Math.min(index - 1, nonTerminalTabs.length - 1))] ||
+        remainingTabs[0];
+      await activateWorkspaceTab(nextPath);
       return;
     }
 
     loadedContentRef.current = '';
     setCurrentPath('');
     setContent('');
+    setActiveWorkspaceTab('');
     setStatus('Ready');
   };
 
@@ -1419,8 +1499,11 @@ export default function App() {
     const remaining = openTabs.filter((p) => !toClose.includes(p));
     setOpenTabs(remaining);
     toClose.forEach((p) => delete tabCacheRef.current[p]);
-    if (toClose.includes(currentPath)) {
-      await activatePath(path);
+    if (toClose.includes(TERMINAL_TAB_ID)) {
+      setShowTerminal(false);
+    }
+    if (toClose.includes(activeWorkspaceTab)) {
+      await activateWorkspaceTab(path);
     }
   };
 
@@ -1429,8 +1512,11 @@ export default function App() {
     const remaining = openTabs.filter((p) => !toClose.includes(p));
     setOpenTabs(remaining);
     toClose.forEach((p) => delete tabCacheRef.current[p]);
-    if (toClose.includes(currentPath)) {
-      await activatePath(path);
+    if (toClose.includes(TERMINAL_TAB_ID)) {
+      setShowTerminal(false);
+    }
+    if (toClose.includes(activeWorkspaceTab)) {
+      await activateWorkspaceTab(path);
     }
   };
 
@@ -1706,7 +1792,7 @@ export default function App() {
         await openVault();
         break;
       case 'action:terminal':
-        setShowTerminal((v) => !v);
+        toggleTerminal();
         break;
       case 'action:sidebar':
         setShowSidebar((v) => !v);
@@ -1899,7 +1985,7 @@ export default function App() {
       active.scrollIntoView({ inline: 'nearest', block: 'nearest', behavior: 'smooth' });
       requestAnimationFrame(updateTabOverflow);
     }
-  }, [currentPath, openTabs]);
+  }, [activeWorkspaceTab, openTabs]);
 
   const scrollTabs = (delta) => {
     const el = tabbarRef.current;
@@ -1931,8 +2017,6 @@ export default function App() {
     );
   }
 
-  const terminalOnRight = settings.terminalPosition === 'right';
-  const terminalOnBottom = settings.terminalPosition !== 'right';
   const splitPaneNode = splitView ? (
     <section className="single-pane split-pane">
       <article className="preview-pane split-preview-pane" onClick={handleSplitPreviewClick}>
@@ -1984,7 +2068,7 @@ export default function App() {
             <Button variant="ghost" size="icon" className="quick-icon-btn" onClick={createNote} title="New note">
               <Plus size={14} />
             </Button>
-            <Button variant="ghost" size="icon" className="quick-icon-btn" onClick={() => setShowTerminal((v) => !v)} title="Terminal">
+            <Button variant="ghost" size="icon" className="quick-icon-btn" onClick={() => toggleTerminal()} title="Terminal">
               <TerminalSquare size={14} />
             </Button>
             <Button variant="ghost" size="icon" className="quick-icon-btn" onClick={() => setShowGraph(true)} title="Graph view">
@@ -2072,14 +2156,7 @@ export default function App() {
         </div>
       </aside>
 
-      <main
-        className={`workspace ${(showTerminal && terminalOnBottom) ? 'terminal-open' : 'terminal-closed'}`}
-        style={{
-          '--context-width': `${contextWidth}px`,
-          '--terminal-height': `${terminalHeight}px`,
-          '--terminal-width': `${terminalWidth}px`
-        }}
-      >
+      <main className="workspace" style={{ '--context-width': `${contextWidth}px` }}>
         <div className="topbar">
           {!showSidebar && (
             <button className="sidebar-restore-btn" onClick={() => setShowSidebar(true)} title="Show sidebar (⌘\\)">
@@ -2099,19 +2176,24 @@ export default function App() {
                 <div className="tabbar" ref={tabbarRef} onScroll={updateTabOverflow}>
                   {sortedTabs.map((path) => {
                     const isPinned = pinnedTabs.has(path);
+                    const isTerminalTab = path === TERMINAL_TAB_ID;
+                    const isTerminalVisible = isTerminalTab && showTerminal;
+                    const tabLabel = isTerminalTab ? 'Terminal' : path.split('/').pop().replace(/\.md$/, '');
+                    const tabTitle = isTerminalTab ? 'Terminal' : path;
                     return (
                       <button
                         key={path}
-                        className={`top-tab ${path === currentPath ? 'active' : ''} ${isPinned ? 'pinned' : ''}`}
-                        onClick={() => activatePath(path)}
-                        title={path}
+                        className={`top-tab ${path === activeWorkspaceTab ? 'active' : ''} ${isPinned ? 'pinned' : ''} ${isTerminalVisible ? 'terminal-open' : ''}`}
+                        onClick={() => activateWorkspaceTab(path)}
+                        title={tabTitle}
                         onContextMenu={(e) => {
                           e.preventDefault();
                           setTabMenu({ x: e.clientX, y: e.clientY, path, adjusted: false });
                         }}
                       >
                         {isPinned && <Pin size={10} className="pin-icon" />}
-                        <span>{path.split('/').pop().replace(/\.md$/, '')}</span>
+                        {isTerminalTab && <TerminalSquare size={11} className="terminal-tab-icon" />}
+                        <span className="top-tab-label">{tabLabel}</span>
                         {!isPinned && (
                           <span
                             className="top-tab-close"
@@ -2198,16 +2280,16 @@ export default function App() {
               <Button variant="ghost" size="icon" className="icon-btn" onClick={() => setShowContext((v) => !v)} title="Toggle links panel">
                 {showContext ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
               </Button>
-              <Button variant="ghost" size="icon" className={`icon-btn ${showTerminal ? 'active' : ''}`} onClick={() => setShowTerminal((v) => !v)} title="Toggle terminal">
+              <Button variant="ghost" size="icon" className={`icon-btn ${showTerminal ? 'active' : ''}`} onClick={() => toggleTerminal()} title="Toggle terminal">
                 <TerminalSquare size={14} />
               </Button>
             </div>
           </div>
         </div>
 
-        <div className={`content-grid ${(showContext && !showAgent) ? '' : 'context-hidden'} ${(terminalOnRight && showTerminal) ? 'terminal-right' : ''}`}>
-          <div className={`editor-split ${(!showAgent && splitView) ? `split-open split-${splitView.side}` : ''}`}>
-            {!showAgent && splitView?.side === 'left' && splitPaneNode}
+        <div className={`content-grid ${(showContext && !showAgent) ? '' : 'context-hidden'}`}>
+          <div className={`editor-split ${(!showAgent && activeWorkspaceTab !== TERMINAL_TAB_ID && splitView) ? `split-open split-${splitView.side}` : ''}`}>
+            {!showAgent && activeWorkspaceTab !== TERMINAL_TAB_ID && splitView?.side === 'left' && splitPaneNode}
 
             <section className="single-pane main-pane">
             {showAgent ? (
@@ -2233,97 +2315,104 @@ export default function App() {
                 onAfterMutation={handleAgentMutation}
                 onBack={() => setShowAgent(false)}
               />
-            ) : currentPath ? (
-              <article className="preview-pane" ref={previewRef}>
-                <div className="prose-wrapper" style={{ maxWidth: `${effectiveContentWidth}px` }}>
-                  {(() => {
-                    const renderBlock = (block, index) => {
-                      if (editingBlock === index) {
-                        return (
-                          <textarea
-                            key={`edit-${index}`}
-                            className="inline-block-editor"
-                            value={editingDraft}
-                            spellCheck={settings.editorSpellcheck}
-                            autoFocus
-                            ref={(el) => {
-                              if (el) {
-                                el.style.height = 'auto';
-                                el.style.height = `${el.scrollHeight}px`;
-                              }
-                            }}
-                            onChange={(e) => {
-                              setEditingDraft(e.target.value);
-                              e.target.style.height = 'auto';
-                              e.target.style.height = `${e.target.scrollHeight}px`;
-                            }}
-                            onBlur={commitBlockEdit}
-                            onKeyDown={(e) => {
-                              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-                                e.preventDefault();
-                                commitBlockEdit();
-                              }
-                              if (e.key === 'Escape') {
-                                e.preventDefault();
-                                commitBlockEdit();
-                              }
-                            }}
-                          />
-                        );
-                      }
-
-                      const html = block.text.trim()
-                        ? DOMPurify.sanitize(marked.parse(wikify(block.text)), { ADD_ATTR: ['data-wiki'] })
-                        : '<div class="block-empty-spacer"></div>';
-
-                      return (
-                        <div
-                          key={`block-${index}`}
-                          className={`live-block ${block.text.trim() ? '' : 'empty'}`}
-                          onClick={(event) => {
-                            if (event.target.closest('a[data-wiki]')) return;
-                            beginBlockEdit(index);
-                          }}
-                          dangerouslySetInnerHTML={{ __html: html }}
-                        />
-                      );
-                    };
-
-                    const startIndex = firstBlockIsHeading ? 1 : 0;
-
-                    return (
-                      <>
-                        {firstBlockIsHeading && (
-                          <div className="prose live-blocks">
-                            {renderBlock(bodyBlocks[0], 0)}
-                          </div>
-                        )}
-                        <FrontmatterPanel meta={frontmatter} />
-                        <div className="prose live-blocks">
-                          {bodyBlocks.slice(startIndex).map((block, i) => renderBlock(block, startIndex + i))}
-                        </div>
-                      </>
-                    );
-                  })()}
-                  <div className="inline-hint">Click a block to edit. Press Cmd/Ctrl+Enter or Esc to apply.</div>
-                </div>
-              </article>
             ) : (
-              <div className="empty-state">
-                <h2>Agno</h2>
-                <div className="empty-state-tips">
-                  <div className="empty-state-tip"><kbd>&#8984; N</kbd><span>New note</span></div>
-                  <div className="empty-state-tip"><kbd>&#8984; O</kbd><span>Open vault</span></div>
-                  <div className="empty-state-tip"><kbd>&#8984; K</kbd><span>Command palette</span></div>
-                  <div className="empty-state-tip"><kbd>&#8984; ,</kbd><span>Settings</span></div>
-                  <div className="empty-state-tip"><kbd>&#8984; \</kbd><span>Toggle sidebar</span></div>
-                  <div className="empty-state-tip"><kbd>&#8984; `</kbd><span>Toggle terminal</span></div>
+              <>
+                <div className={activeWorkspaceTab === TERMINAL_TAB_ID ? 'main-pane-hidden' : ''}>
+                  {currentPath ? (
+                    <article className="preview-pane" ref={previewRef}>
+                      <div className="prose-wrapper" style={{ maxWidth: `${effectiveContentWidth}px` }}>
+                        {(() => {
+                          const renderBlock = (block, index) => {
+                            if (editingBlock === index) {
+                              return (
+                                <textarea
+                                  key={`edit-${index}`}
+                                  className="inline-block-editor"
+                                  value={editingDraft}
+                                  spellCheck={settings.editorSpellcheck}
+                                  autoFocus
+                                  ref={(el) => {
+                                    if (el) {
+                                      el.style.height = 'auto';
+                                      el.style.height = `${el.scrollHeight}px`;
+                                    }
+                                  }}
+                                  onChange={(e) => {
+                                    setEditingDraft(e.target.value);
+                                    e.target.style.height = 'auto';
+                                    e.target.style.height = `${e.target.scrollHeight}px`;
+                                  }}
+                                  onBlur={commitBlockEdit}
+                                  onKeyDown={(e) => {
+                                    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                                      e.preventDefault();
+                                      commitBlockEdit();
+                                    }
+                                    if (e.key === 'Escape') {
+                                      e.preventDefault();
+                                      commitBlockEdit();
+                                    }
+                                  }}
+                                />
+                              );
+                            }
+
+                            const html = block.text.trim()
+                              ? DOMPurify.sanitize(marked.parse(wikify(block.text)), { ADD_ATTR: ['data-wiki'] })
+                              : '<div class="block-empty-spacer"></div>';
+
+                            return (
+                              <div
+                                key={`block-${index}`}
+                                className={`live-block ${block.text.trim() ? '' : 'empty'}`}
+                                onClick={(event) => {
+                                  if (event.target.closest('a[data-wiki]')) return;
+                                  beginBlockEdit(index);
+                                }}
+                                dangerouslySetInnerHTML={{ __html: html }}
+                              />
+                            );
+                          };
+
+                          const startIndex = firstBlockIsHeading ? 1 : 0;
+
+                          return (
+                            <>
+                              {firstBlockIsHeading && (
+                                <div className="prose live-blocks">
+                                  {renderBlock(bodyBlocks[0], 0)}
+                                </div>
+                              )}
+                              <FrontmatterPanel meta={frontmatter} />
+                              <div className="prose live-blocks">
+                                {bodyBlocks.slice(startIndex).map((block, i) => renderBlock(block, startIndex + i))}
+                              </div>
+                            </>
+                          );
+                        })()}
+                        <div className="inline-hint">Click a block to edit. Press Cmd/Ctrl+Enter or Esc to apply.</div>
+                      </div>
+                    </article>
+                  ) : (
+                    <div className="empty-state">
+                      <h2>Agno</h2>
+                      <div className="empty-state-tips">
+                        <div className="empty-state-tip"><kbd>&#8984; N</kbd><span>New note</span></div>
+                        <div className="empty-state-tip"><kbd>&#8984; O</kbd><span>Open vault</span></div>
+                        <div className="empty-state-tip"><kbd>&#8984; K</kbd><span>Command palette</span></div>
+                        <div className="empty-state-tip"><kbd>&#8984; ,</kbd><span>Settings</span></div>
+                        <div className="empty-state-tip"><kbd>&#8984; \</kbd><span>Toggle sidebar</span></div>
+                        <div className="empty-state-tip"><kbd>&#8984; `</kbd><span>Toggle terminal</span></div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
+                <TerminalPane visible={showTerminal} className={`terminal-pane-main ${activeWorkspaceTab === TERMINAL_TAB_ID ? '' : 'hidden'}`} />
+              </>
             )}
             </section>
 
-            {!showAgent && splitView?.side !== 'left' && splitPaneNode}
+            {!showAgent && activeWorkspaceTab !== TERMINAL_TAB_ID && splitView?.side !== 'left' && splitPaneNode}
           </div>
 
           {showContext && !showAgent && (
@@ -2406,32 +2495,7 @@ export default function App() {
             </aside>
           )}
 
-          {terminalOnRight && (
-            <aside className={`terminal-side ${showTerminal ? '' : 'hidden'}`}>
-              {showTerminal && (
-                <div
-                  className="pane-resize-handle vertical pane-resize-handle-inset-left"
-                  onMouseDown={(event) => beginResizeDrag('terminal-width', event)}
-                  title="Resize terminal"
-                />
-              )}
-              <TerminalPane visible={showTerminal} />
-            </aside>
-          )}
         </div>
-
-        {terminalOnBottom && (
-          <div className="terminal-bottom-shell">
-            {showTerminal && (
-              <div
-                className="pane-resize-handle horizontal"
-                onMouseDown={(event) => beginResizeDrag('terminal-height', event)}
-                title="Resize terminal"
-              />
-            )}
-            <TerminalPane visible={showTerminal} />
-          </div>
-        )}
 
         <div className="composer-bar">
           <div className="composer-left composer-metrics">
@@ -2614,6 +2678,7 @@ export default function App() {
           </button>
           <div className="menu-separator" />
           <button
+            disabled={tabMenu.path === TERMINAL_TAB_ID}
             onClick={() => {
               openSplitFromTab(tabMenu.path, 'right');
               setTabMenu(null);
@@ -2622,6 +2687,7 @@ export default function App() {
             Split Right
           </button>
           <button
+            disabled={tabMenu.path === TERMINAL_TAB_ID}
             onClick={() => {
               openSplitFromTab(tabMenu.path, 'left');
               setTabMenu(null);

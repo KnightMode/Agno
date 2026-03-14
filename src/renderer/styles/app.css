@@ -1291,18 +1291,12 @@ button {
   min-height: 0;
   display: grid;
   --context-width: 280px;
-  --terminal-height: 200px;
-  --terminal-width: 360px;
-  grid-template-rows: 48px minmax(0, 1fr) var(--terminal-height);
+  grid-template-rows: 48px minmax(0, 1fr);
   overflow: hidden;
   background: #131315;
   position: relative;
   transition: none;
   isolation: isolate;
-}
-
-.workspace.terminal-closed {
-  grid-template-rows: 48px minmax(0, 1fr) 0px;
 }
 
 /* ── Top Bar — NSToolbar-style ── */
@@ -1390,7 +1384,7 @@ button {
   transition: all var(--duration-fast) var(--ease-mac);
 }
 
-.top-tab span:first-child {
+.top-tab-label {
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
@@ -1454,10 +1448,20 @@ button {
   padding-right: 10px;
 }
 
+.top-tab.terminal-open {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
 .pin-icon {
   flex-shrink: 0;
   opacity: 0.45;
   transform: rotate(45deg);
+}
+
+.terminal-tab-icon {
+  flex-shrink: 0;
+  opacity: 0.65;
 }
 
 .topbar-main {
@@ -2558,6 +2562,15 @@ body.context-resizing {
 
 .terminal-pane .xterm {
   padding: 4px 0;
+}
+
+.terminal-pane-main {
+  border-top: none;
+}
+
+.terminal-pane-main.hidden,
+.main-pane-hidden {
+  display: none;
 }
 
 .terminal-side {

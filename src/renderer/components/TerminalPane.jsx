@@ -4,7 +4,7 @@ import { FitAddon } from '@xterm/addon-fit';
 
 const TERM_ID = 'main';
 
-export default function TerminalPane({ visible }) {
+export default function TerminalPane({ visible, className = '' }) {
   const hostRef = useRef(null);
   const termRef = useRef(null);
   const fitRef = useRef(null);
@@ -145,5 +145,5 @@ export default function TerminalPane({ visible }) {
     };
   }, []);
 
-  return <div className="terminal-pane" ref={hostRef} />;
+  return <div className={`terminal-pane ${className}`.trim()} ref={hostRef} />;
 }
